@@ -173,7 +173,6 @@ sources/0 = SubResource("TileSetAtlasSource_3txbk")
 
 [node name="Tiles" type="TileMapLayer" parent="."]
 y_sort_enabled = true
-position = Vector2(101, 58)
 tile_map_data = PackedByteArray("AAD//wAAAAAIAAAAAAAAAAAAAAAIAAAAAAABAAAAAAAIAAAAAAACAAAAAAAIAAAAAAADAAAAAAAIAAAAAAADAAEAAAAIAAAAAAAEAAEAAAAIAAAAAAA=")
 tile_set = SubResource("TileSet_qt7hk")
 script = ExtResource("2_qt7hk")

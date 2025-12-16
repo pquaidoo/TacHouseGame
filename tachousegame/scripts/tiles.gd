@@ -21,8 +21,10 @@ const TILE_BOTTOM_RIGHT := Vector2i(7, 0)    # bottom-right corner
 const TILE_BOTTOM_LEFT := Vector2i(8, 0)     # bottom-left corner
 
 func _ready() -> void:
-	if not Engine.is_editor_hint():
-		_build_chunk()
+	_build_chunk()
+	
+func rebuild() -> void:
+	_build_chunk()
 
 func _build_chunk() -> void:
 	clear()
