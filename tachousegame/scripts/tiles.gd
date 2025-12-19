@@ -1,6 +1,7 @@
 @tool
 extends TileMapLayer
 
+
 @export var chunk_size: int = 8:
 	set(value):
 		chunk_size = max(value, 3)
@@ -20,8 +21,10 @@ const TILE_TOP_RIGHT := Vector2i(6, 0)       # right edge
 const TILE_BOTTOM_RIGHT := Vector2i(7, 0)    # bottom-right corner
 const TILE_BOTTOM_LEFT := Vector2i(8, 0)     # bottom-left corner
 
-func _ready() -> void:
+func _ready():
+	print("Chunk ready:", self)
 	_build_chunk()
+
 	
 func rebuild() -> void:
 	_build_chunk()
