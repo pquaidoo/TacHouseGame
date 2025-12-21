@@ -6,7 +6,8 @@
 [node name="Main" type="Node2D"]
 
 [node name="Map" parent="." instance=ExtResource("1_elqb8")]
-map_size = 9
+chunk_size = 7
+map_size = 11
 
 [node name="Player Camera" parent="." instance=ExtResource("1_rvslj")]
 drag_button = 1
