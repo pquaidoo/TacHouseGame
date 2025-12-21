@@ -32,9 +32,14 @@ extends Node2D
 #    1) Place ChunkHighlight AFTER TileMapLayers in the scene tree
 #    2) Set a high z_index (either in editor or via highlight_z_index)
 #
-#  Note:
-#    - z_index sorting happens among siblings on the same CanvasLayer.
-#    - If you later use CanvasLayer nodes, that can override z behavior.
+#  ISOMETRIC NOTE (Y OFFSET)
+#  ------------------------------------------------------------
+#  In isometric TileMaps, TileMapLayer.map_to_local(cell) typically returns
+#  an anchor point that is slightly BELOW the visible top edge of the tile.
+#  That can make outlines look “too low” by a few pixels.
+#
+#  We solve this at the RENDERING layer by applying a small screen-space
+#  vertical offset to all points before drawing.
 # ============================================================
 
 
@@ -56,6 +61,21 @@ extends Node2D
 
 # z_index used to keep this node on top of map layers.
 @export var highlight_z_index: int = 100
+
+# ============================================================
+#  SECTION: Isometric Visual Correction (Y Offset)
+# ------------------------------------------------------------
+#  vertical_offset_px:
+#    - Applied to all points RIGHT BEFORE drawing.
+#    - Negative values move the highlight UP.
+#    - Typical values for 32x16 iso tiles: -4 to -10
+#
+#  Keep this here (rendering) instead of Map.gd so that:
+#    - chunk math stays correct
+#    - only the visual is adjusted
+# ============================================================
+
+@export var vertical_offset_px: float = -6.0
 
 
 # ============================================================
@@ -92,7 +112,7 @@ func set_visible_chunk(visible: bool) -> void:
 # about typed arrays through call().
 func set_points(p: Array) -> void:
 	points = PackedVector2Array(p)
-	_visible_chunk = true  # <-- IMPORTANT: re-enable after a clear()
+	_visible_chunk = true  # IMPORTANT: re-enable after a clear()
 	queue_redraw()
 
 # Convenience: hide + clear.
@@ -114,16 +134,30 @@ func _draw() -> void:
 	if points.size() != 4:
 		return
 
+	# Apply a small vertical correction for isometric visuals.
+	# (Negative moves up.)
+	var offset: Vector2 = Vector2(0.0, vertical_offset_px)
+
 	# Optional fill
 	if fill_alpha > 0.0:
+		var filled: PackedVector2Array = PackedVector2Array([
+			points[0] + offset,
+			points[1] + offset,
+			points[2] + offset,
+			points[3] + offset,
+		])
 		draw_colored_polygon(
-			points,
+			filled,
 			Color(highlight_color.r, highlight_color.g, highlight_color.b, fill_alpha)
 		)
 
 	# Outline (closed loop)
 	var loop: PackedVector2Array = PackedVector2Array([
-		points[0], points[1], points[2], points[3], points[0]
+		points[0] + offset,
+		points[1] + offset,
+		points[2] + offset,
+		points[3] + offset,
+		points[0] + offset,
 	])
 	draw_polyline(
 		loop,

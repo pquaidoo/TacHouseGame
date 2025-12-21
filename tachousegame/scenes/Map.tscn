@@ -330,6 +330,7 @@ script = ExtResource("3_xkm8s")
 
 [node name="Coin Layer" type="TileMapLayer" parent="."]
 position = Vector2(455, 161)
+tile_map_data = PackedByteArray("AAACAAAAAAACAAIAAAAIAAMAAAABAAIAAAAHAAYAAAAAAAIAAAAGAAcAAAABAAIAAAADAAgAAAABAAIAAAAJAAkAAAABAAIAAAA=")
 tile_set = SubResource("TileSet_7ctrk")
 script = ExtResource("4_41ykk")
 
