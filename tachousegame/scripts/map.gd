@@ -73,6 +73,7 @@ var _click_tracking: bool = false
 # ============================================================
 
 @export var ground_layer_path: NodePath
+@export var castle_layer_path: NodePath
 @export var grass_layer_path: NodePath
 @export var coin_layer_path: NodePath
 @export var highlight_node_path: NodePath
@@ -124,6 +125,10 @@ func rebuild() -> void:
 	ground.chunk_size = chunk_size
 	ground.map_size = map_size
 	ground.rebuild()
+	
+	var castle: TileMapLayer = get_node_or_null(castle_layer_path) as TileMapLayer
+	if castle != null and castle.has_method("rebuild_from_map"):
+		castle.call("rebuild_from_map", chunk_size, map_size)
 
 	# --- Step 2: Grass decorates over ground (optional) ---
 	if grass != null and grass.has_method("rebuild_from_ground"):
