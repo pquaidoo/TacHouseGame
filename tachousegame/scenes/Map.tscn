@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://d1rgb4ccfyu2v" path="res://scripts/map.gd" id="1_lajc7"]
 [ext_resource type="Texture2D" uid="uid://cvfc6j5pu4m6b" path="res://assets/tilemap.png" id="2_lajc7"]
-[ext_resource type="Script" path="res://scripts/ground_layer.gd" id="3_xkm8s"]
+[ext_resource type="Script" uid="uid://c364scyr1stxt" path="res://scripts/ground_layer.gd" id="3_xkm8s"]
 [ext_resource type="Script" uid="uid://du1l6bppadqfq" path="res://scripts/grass_layer.gd" id="4_tm3qm"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_tm3qm"]
@@ -254,6 +254,7 @@ texture_region_size = Vector2i(32, 32)
 
 [sub_resource type="TileSet" id="TileSet_tm3qm"]
 tile_shape = 1
+tile_layout = 5
 tile_size = Vector2i(32, 16)
 sources/0 = SubResource("TileSetAtlasSource_yyirk")
 
