@@ -1,44 +1,42 @@
 @tool
 extends Area2D
 
-
-# Map owns the "settings" (single source of truth)
 @export var chunk_size: int = 5:
 	set(value):
-		chunk_size = max(value, 5)
+		chunk_size = max(value, 3)
 		_request_rebuild()
 
-@export var map_size: int = 2:
+@export var map_size: int = 7:
 	set(value):
 		map_size = max(value, 1)
 		_request_rebuild()
 
+@export var seed: int = 12345:
+	set(value):
+		seed = value
+		_request_rebuild()
 
-# get access to node?
 @export var ground_layer_path: NodePath
-@onready var ground_layer: TileMapLayer = get_node_or_null(ground_layer_path)
-
+@export var grass_layer_path: NodePath
 
 func _ready() -> void:
 	rebuild()
-	
-	
+
 func rebuild() -> void:
-	# Avoid null crashes in editor if path not set yet
-	if ground_layer == null:
-		push_error("Map.gd: ground_layer_path not set or Ground Layer not found.")
+	var ground := get_node_or_null(ground_layer_path) as TileMapLayer
+	var grass := get_node_or_null(grass_layer_path) as TileMapLayer
+
+	if ground == null:
 		return
-		
-	# Tell the layer what settings to use (Map -> Layer)
-	ground_layer.chunk_size = chunk_size
-	ground_layer.map_size = map_size
 
-	# Ask the layer to draw itself
-	if ground_layer.has_method("rebuild"):
-		ground_layer.rebuild()
+	ground.chunk_size = chunk_size
+	ground.map_size = map_size
+	ground.rebuild()
 
+	# Grass paints over whatever ground created
+	if grass != null and grass.has_method("rebuild_from_ground"):
+		grass.rebuild_from_ground(ground, seed)
 
 func _request_rebuild() -> void:
-	# In editor, rebuild safely after property change
 	if Engine.is_editor_hint():
 		call_deferred("rebuild")
