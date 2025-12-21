@@ -5,39 +5,39 @@ extends Area2D
 #  FILE: map.gd
 #  NODE: Map (Area2D)
 #
-#  ROLE: High-level Map Controller
+#  ROLE: High-level Map Controller (Editor + Runtime)
 # ------------------------------------------------------------
-#  This node acts as the "brain" of the map system.
+#  Map.gd is the coordinator / “brain” of the map system.
 #
-#  It does NOT draw tiles or highlights directly.
-#  Instead, it coordinates child nodes that specialize in:
-#    - Tile generation (GroundLayer)
-#    - Decorative overlays (GrassLayer)
-#    - Visual feedback (ChunkHighlight)
+#  Responsibilities:
+#    - Own global map parameters (chunk_size, map_size, seed)
+#    - Coordinate build order of layers:
+#        1) Ground generates base tiles
+#        2) Grass decorates over ground
+#        3) Coins spawn on top of ground tiles (tile-based pickups)
+#    - Convert mouse -> tile cell -> chunk coords
+#    - Drive ChunkHighlight node (visual feedback)
+#    - Handle click selection + coin collection (testing input)
 #
-#  This separation keeps responsibilities clean and makes
-#  future refactors (new layers, new selection logic, etc.)
-#  much easier.
+#  Non-responsibilities:
+#    - Does NOT draw tiles itself (TileMapLayers do)
+#    - Does NOT draw highlight shapes (ChunkHighlight does)
+#    - Does NOT implement camera behavior (Camera2D script does)
+#
+#  Scene wiring requirements (NodePaths in Inspector):
+#    - ground_layer_path:    TileMapLayer (REQUIRED)
+#    - grass_layer_path:     TileMapLayer (OPTIONAL)
+#    - coin_layer_path:      TileMapLayer (OPTIONAL but used for coins)
+#    - highlight_node_path:  Node2D (OPTIONAL but recommended)
+#
+#  Important ordering rule:
+#    - Coins MUST spawn AFTER ground.rebuild()
+#      because spawn checks which ground cells exist.
 # ============================================================
 
 
 # ============================================================
 #  SECTION: Map Generation Settings
-# ------------------------------------------------------------
-#  These values define the logical structure of the map.
-#  Changing them triggers a rebuild (even in the editor).
-#
-#  chunk_size:
-#    - Number of tiles per chunk (width & height)
-#    - Must be >= 3 to avoid degenerate chunks
-#
-#  map_size:
-#    - Number of chunks in each dimension
-#    - Final map is map_size x map_size chunks
-#
-#  seed:
-#    - Shared random seed used by layers that need randomness
-#      (e.g., grass decoration placement)
 # ============================================================
 
 @export var chunk_size: int = 5:
@@ -59,53 +59,38 @@ extends Area2D
 # ============================================================
 #  SECTION: Click / Drag Disambiguation
 # ------------------------------------------------------------
-#  We distinguish between:
-#    - A click (select chunk)
-#    - A drag (camera movement)
-#
-#  Camera movement uses a drag threshold.
-#  Map selection uses the same idea:
-#    - Press position is recorded
-#    - On release, if movement < threshold, treat as click
+#  We only consider a “selection click” if the mouse didn’t move
+#  far while the button was held (so camera dragging wins).
 # ============================================================
 
 @export var click_threshold_px: float = 8.0
-
 var _click_press_pos: Vector2 = Vector2.ZERO
 var _click_tracking: bool = false
 
 
 # ============================================================
 #  SECTION: Scene Wiring (NodePaths)
-# ------------------------------------------------------------
-#  These paths are assigned in the Inspector.
-#  We use NodePath instead of hard-coded $NodeName
-#  to reduce coupling and allow easy refactors.
-#
-#  ground_layer_path (REQUIRED):
-#    - TileMapLayer that generates the base terrain
-#
-#  grass_layer_path (OPTIONAL):
-#    - TileMapLayer that paints decorative tiles over ground
-#
-#  highlight_node_path (OPTIONAL but recommended):
-#    - Node2D that renders chunk hover / selection visuals
 # ============================================================
 
 @export var ground_layer_path: NodePath
 @export var grass_layer_path: NodePath
+@export var coin_layer_path: NodePath
 @export var highlight_node_path: NodePath
 
 
 # ============================================================
-#  SECTION: Chunk Hover / Selection State
+#  SECTION: Coin Generation Settings
 # ------------------------------------------------------------
-#  chunk_selection_enabled:
-#    - Master toggle for all hover & selection logic
-#
-#  _hover_chunk:
-#    - Currently hovered chunk coordinate
-#    - (-1, -1) means "no valid chunk under mouse"
+#  coin_chance:
+#    - Probability per tile that a coin spawns (1/3/5)
+#  Coins are tile-based and tracked by the CoinLayer script.
+# ============================================================
+
+@export_range(0.0, 1.0, 0.01) var coin_chance: float = 0.06
+
+
+# ============================================================
+#  SECTION: Chunk Hover / Selection State
 # ============================================================
 
 @export var chunk_selection_enabled: bool = true
@@ -114,12 +99,10 @@ var _hover_chunk: Vector2i = Vector2i(-1, -1)
 
 # ============================================================
 #  SECTION: Lifecycle
-# ------------------------------------------------------------
-#  Because this script runs in-editor (@tool),
-#  we explicitly enable processing to avoid timing issues.
 # ============================================================
 
 func _ready() -> void:
+	# Tool scripts can have odd editor timing; make sure these run.
 	set_process(true)
 	set_process_unhandled_input(true)
 	rebuild()
@@ -127,19 +110,12 @@ func _ready() -> void:
 
 # ============================================================
 #  SECTION: Public API
-# ------------------------------------------------------------
-#  rebuild()
-#    - Pushes generation settings into GroundLayer
-#    - Triggers GroundLayer rebuild
-#    - Triggers GrassLayer rebuild (if present)
-#    - Clears any active highlight
-#
-#  This function is safe to call both in editor and runtime.
 # ============================================================
 
 func rebuild() -> void:
 	var ground: TileMapLayer = get_node_or_null(ground_layer_path) as TileMapLayer
 	var grass: TileMapLayer = get_node_or_null(grass_layer_path) as TileMapLayer
+	var coins: TileMapLayer = get_node_or_null(coin_layer_path) as TileMapLayer
 
 	if ground == null:
 		return
@@ -149,9 +125,14 @@ func rebuild() -> void:
 	ground.map_size = map_size
 	ground.rebuild()
 
-	# --- Step 2: Paint decorations (optional) ---
+	# --- Step 2: Grass decorates over ground (optional) ---
 	if grass != null and grass.has_method("rebuild_from_ground"):
 		grass.rebuild_from_ground(ground, seed)
+
+	# --- Step 3: Spawn coins AFTER ground exists (optional) ---
+	if coins != null and coins.has_method("clear_coins") and coins.has_method("place_coin"):
+		coins.call("clear_coins")
+		_spawn_coins(ground, coins)
 
 	# Reset highlight after rebuild
 	_hover_chunk = Vector2i(-1, -1)
@@ -160,10 +141,6 @@ func rebuild() -> void:
 
 # ============================================================
 #  SECTION: Hover Update Loop
-# ------------------------------------------------------------
-#  Runs every frame:
-#    - Determine which chunk is under the mouse
-#    - Only update highlight if the chunk changed
 # ============================================================
 
 func _process(_delta: float) -> void:
@@ -177,14 +154,11 @@ func _process(_delta: float) -> void:
 
 
 # ============================================================
-#  SECTION: Click Selection
+#  SECTION: Click Selection + Coin Collect
 # ------------------------------------------------------------
-#  Selection occurs on mouse RELEASE (not press),
-#  and only if the mouse did not move past the threshold.
-#
-#  This ensures:
-#    - Camera drag takes priority
-#    - Simple clicks still select chunks
+#  Priority:
+#    1) If click hits a coin cell -> collect it and STOP
+#    2) Otherwise -> select chunk and print coords
 # ============================================================
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -203,8 +177,22 @@ func _unhandled_input(event: InputEvent) -> void:
 
 			var release_pos: Vector2 = get_viewport().get_mouse_position()
 			if release_pos.distance_to(_click_press_pos) > click_threshold_px:
-				return  # Treated as a drag
+				return  # treated as a drag
 
+			# --- 1) Coin collect (if present) ---
+			var ground: TileMapLayer = get_node_or_null(ground_layer_path) as TileMapLayer
+			var coin_layer: TileMapLayer = get_node_or_null(coin_layer_path) as TileMapLayer
+
+			if ground != null and coin_layer != null and coin_layer.has_method("collect_coin"):
+				var mouse_local: Vector2 = ground.to_local(get_global_mouse_position())
+				var cell: Vector2i = ground.local_to_map(mouse_local)
+
+				var gained: int = int(coin_layer.call("collect_coin", cell))
+				if gained > 0:
+					print("Collected coin:", gained, "at cell", cell)
+					return
+
+			# --- 2) Chunk select fallback ---
 			var chunk: Vector2i = _chunk_at_mouse()
 			if chunk.x != -1:
 				print("Selected chunk:", chunk)
@@ -212,15 +200,6 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # ============================================================
 #  SECTION: Mouse -> Cell -> Chunk Conversion
-# ------------------------------------------------------------
-#  Conversion pipeline:
-#    1) Global mouse position
-#    2) Convert to GroundLayer local space
-#    3) local_to_map() -> tile cell (Vector2i)
-#    4) cell / chunk_size -> chunk coordinate
-#
-#  local_to_map() handles isometric projection correctly,
-#  assuming the TileSet is configured as isometric.
 # ============================================================
 
 func _chunk_at_mouse() -> Vector2i:
@@ -243,13 +222,6 @@ func _chunk_at_mouse() -> Vector2i:
 
 # ============================================================
 #  SECTION: Highlight Driver (Map -> ChunkHighlight)
-# ------------------------------------------------------------
-#  Map computes chunk geometry.
-#  ChunkHighlight is responsible for rendering.
-#
-#  We pass 4 corner points in MAP-LOCAL space.
-#  Transform-safe conversion is used to remain correct even if
-#  layers or Map are repositioned in the editor.
 # ============================================================
 
 func _update_highlight(chunk: Vector2i) -> void:
@@ -271,6 +243,10 @@ func _update_highlight(chunk: Vector2i) -> void:
 	var c2: Vector2i = base + Vector2i(n, n)
 	var c3: Vector2i = base + Vector2i(0, n)
 
+	# Transform-safe:
+	#   ground.map_to_local(cell) -> ground-local
+	#   ground.to_global(...)     -> global
+	#   Map.to_local(...)         -> map-local (expected by ChunkHighlight)
 	var p0: Vector2 = to_local(ground.to_global(ground.map_to_local(c0)))
 	var p1: Vector2 = to_local(ground.to_global(ground.map_to_local(c1)))
 	var p2: Vector2 = to_local(ground.to_global(ground.map_to_local(c2)))
@@ -281,10 +257,48 @@ func _update_highlight(chunk: Vector2i) -> void:
 
 
 # ============================================================
-#  SECTION: Editor Rebuild Scheduling
+#  SECTION: Coin Spawning
 # ------------------------------------------------------------
-#  Export setters may fire before the scene tree is ready.
-#  call_deferred() ensures rebuild happens safely.
+#  We iterate the entire tile rectangle for the current map:
+#    width  = map_size * chunk_size
+#    height = map_size * chunk_size
+#
+#  We only place coins on cells where ground has a tile.
+#  This prevents coins from spawning off-map.
+# ============================================================
+
+func _spawn_coins(ground: TileMapLayer, coin_layer: TileMapLayer) -> void:
+	if ground == null or coin_layer == null:
+		return
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+
+	var tiles_w: int = map_size * chunk_size
+	var tiles_h: int = map_size * chunk_size
+
+	for y in range(tiles_h):
+		for x in range(tiles_w):
+			var cell := Vector2i(x, y)
+
+			# Only place coins on valid ground cells
+			if ground.get_cell_source_id(cell) == -1:
+				continue
+
+			if rng.randf() > coin_chance:
+				continue
+
+			var amount := 1
+			match rng.randi_range(0, 2):
+				0: amount = 1
+				1: amount = 3
+				2: amount = 5
+
+			coin_layer.call("place_coin", cell, amount)
+
+
+# ============================================================
+#  SECTION: Editor Rebuild Scheduling
 # ============================================================
 
 func _request_rebuild() -> void:
