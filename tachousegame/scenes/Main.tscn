@@ -6,6 +6,11 @@
 [node name="Main" type="Node2D"]
 
 [node name="Map" parent="." instance=ExtResource("1_elqb8")]
-map_size = 4
+map_size = 9
 
 [node name="Player Camera" parent="." instance=ExtResource("1_rvslj")]
+drag_button = 1
+drag_sensitivity = 1.0
+zoom_step = 0.1
+min_zoom = 0.5
+max_zoom = 2.5

@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://d1rgb4ccfyu2v" path="res://scripts/map.gd" id="1_lajc7"]
 [ext_resource type="Texture2D" uid="uid://cvfc6j5pu4m6b" path="res://assets/tilemap.png" id="2_lajc7"]
 [ext_resource type="Script" uid="uid://c364scyr1stxt" path="res://scripts/ground_layer.gd" id="3_xkm8s"]
-[ext_resource type="Script" path="res://scripts/grass_layer.gd" id="4_tm3qm"]
+[ext_resource type="Script" uid="uid://du1l6bppadqfq" path="res://scripts/grass_layer.gd" id="4_tm3qm"]
 [ext_resource type="Script" uid="uid://coxji0ssjw4by" path="res://scripts/chunk_highlight.gd" id="5_yyirk"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_tm3qm"]
@@ -284,3 +284,4 @@ script = ExtResource("4_tm3qm")
 [node name="Chunk Highlight" type="Node2D" parent="."]
 z_index = 100
 script = ExtResource("5_yyirk")
+highlight_color = Color(0.3692784, 0.6570411, 0.37414998, 1)
