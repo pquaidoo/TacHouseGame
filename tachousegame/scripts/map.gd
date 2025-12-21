@@ -33,6 +33,11 @@ extends Area2D
 	set(value):
 		seed = value
 		_request_rebuild()
+		
+@export var click_threshold_px: float = 8.0
+var _click_press_pos := Vector2.ZERO
+var _click_tracking := false
+
 
 
 # ============================================================
@@ -122,10 +127,25 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not chunk_selection_enabled:
 		return
 
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		var chunk: Vector2i = _chunk_at_mouse()
-		if chunk.x != -1:
-			print("Selected chunk:", chunk)
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_click_tracking = true
+			_click_press_pos = get_viewport().get_mouse_position()
+			return
+		else:
+			if not _click_tracking:
+				return
+			_click_tracking = false
+
+			var release_pos := get_viewport().get_mouse_position()
+			if release_pos.distance_to(_click_press_pos) > click_threshold_px:
+				# It was a drag, don't select
+				return
+
+			var chunk: Vector2i = _chunk_at_mouse()
+			if chunk.x != -1:
+				print("Selected chunk:", chunk)
+
 
 
 # ============================================================
