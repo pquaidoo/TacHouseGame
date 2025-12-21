@@ -422,6 +422,8 @@ tile_set = SubResource("TileSet_yyirk")
 script = ExtResource("3_xkm8s")
 
 [node name="Castle Layer" type="TileMapLayer" parent="."]
+z_index = 50
+tile_map_data = PackedByteArray("AAACAAIAAAAAAAQAAAAAAAAAAAAAAAMAAAAHAAIAAAAAAAQAAAAFAAAAAAAAAAMAAAACAAcAAAAAAAQAAAAAAAUAAAAAAAMAAAAHAAcAAAAAAAQAAAAFAAUAAAAAAAMAAAA=")
 tile_set = SubResource("TileSet_inly4")
 script = ExtResource("4_inly4")
 
@@ -434,6 +436,19 @@ script = ExtResource("4_41ykk")
 tile_map_data = PackedByteArray("AAACAAAAAAAFAAEAAAADAAAAAAABAAEAAAAEAAEAAAABAAEAAAADAAQAAAABAAEAAAAHAAAAAAAEAAEAAAAJAAEAAAADAAEAAAAGAAQAAAAAAAEAAAAIAAQAAAAAAAEAAAABAAUAAAACAAEAAAAEAAUAAAACAAEAAAABAAcAAAAAAAEAAAACAAcAAAAAAAEAAAABAAgAAAAFAAEAAAABAAkAAAAEAAEAAAACAAkAAAAAAAEAAAAIAAYAAAADAAEAAAAGAAgAAAAAAAEAAAAIAAgAAAAEAAEAAAAIAAkAAAAAAAEAAAAJAAkAAAADAAEAAAA=")
 tile_set = SubResource("TileSet_tm3qm")
 script = ExtResource("4_tm3qm")
+patch_coverage = 0.6
+patch_size = 0.3
+brush_radius_min = 2
+brush_radius_max = 4
+keep_direction_chance = 0.55
+recenter_chance = 0.1
+branch_chance = 0.12
+ring_scale = 1.5
+density = 0.95
+debug_verify_tiles = true
+thick_grass_atlas_coords = Array[Vector2i]([])
+medium_grass_atlas_coords = null
+thin_grass_atlas_coords = null
 
 [node name="Chunk Highlight" type="Node2D" parent="."]
 z_index = 100
