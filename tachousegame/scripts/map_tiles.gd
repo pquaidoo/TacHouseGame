@@ -9,9 +9,9 @@ extends TileMapLayer
 			_build_chunk()
 
 # how many chunks wide/tall the map is
-@export var map_size: int = 5:
+@export var map_size: Vector2i = Vector2i(4, 4):
 	set(value):
-		map_size = max(value, 1)
+		map_size = Vector2i(max(value.x, 1), max(value.y, 1))
 		if Engine.is_editor_hint():
 			_build_chunk()
 
@@ -49,8 +49,8 @@ func _build_chunk() -> void:
 
 	var n := chunk_size
 
-	for cy in range(map_size):
-		for cx in range(map_size):
+	for cy in range(map_size.y):
+		for cx in range(map_size.x):
 			_build_one_chunk(cx, cy, n)
 
 	_center_map() # <- new
@@ -66,8 +66,8 @@ func _build_one_chunk(cx: int, cy: int, n: int) -> void:
 
 func _center_map() -> void:
 	# total map size in tiles
-	var tiles_w := map_size * chunk_size
-	var tiles_h := map_size * chunk_size
+	var tiles_w := map_size.x * chunk_size
+	var tiles_h := map_size.y * chunk_size
 
 	# tile pixel size from the TileSet (works for iso too; the math below is iso-friendly)
 	var tile_px := tile_set.tile_size

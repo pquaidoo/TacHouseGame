@@ -1,12 +1,10 @@
-[gd_scene load_steps=6 format=3 uid="uid://b6ywwbkgxqmhy"]
+[gd_scene load_steps=5 format=4 uid="uid://caa1adlk2kke7"]
 
-[ext_resource type="Texture2D" uid="uid://cvfc6j5pu4m6b" path="res://assets/tilemap.png" id="1_lajc7"]
-[ext_resource type="Script" uid="uid://bo713hfcpryag" path="res://scripts/map_tiles.gd" id="2_lajc7"]
+[ext_resource type="Texture2D" uid="uid://cvfc6j5pu4m6b" path="res://assets/tilemap.png" id="1_qt7hk"]
+[ext_resource type="Script" uid="uid://7ddix7qq83kv" path="res://scripts/tiles.gd" id="2_qt7hk"]
 
-[sub_resource type="GDScript" id="GDScript_xkm8s"]
-
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_tm3qm"]
-texture = ExtResource("1_lajc7")
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_3txbk"]
+texture = ExtResource("1_qt7hk")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 1:0/0 = 0
@@ -164,19 +162,18 @@ texture_region_size = Vector2i(32, 32)
 8:9/0 = 0
 9:9/0 = 0
 
-[sub_resource type="TileSet" id="TileSet_yyirk"]
+[sub_resource type="TileSet" id="TileSet_qt7hk"]
 tile_shape = 1
 tile_layout = 5
+tile_offset_axis = 1
 tile_size = Vector2i(32, 16)
-sources/0 = SubResource("TileSetAtlasSource_tm3qm")
+sources/0 = SubResource("TileSetAtlasSource_3txbk")
 
-[node name="Map" type="Node2D"]
-script = SubResource("GDScript_xkm8s")
+[node name="Chunk" type="Node2D"]
 
-[node name="Map Tiles" type="TileMapLayer" parent="."]
+[node name="Tiles" type="TileMapLayer" parent="."]
 y_sort_enabled = true
-tile_set = SubResource("TileSet_yyirk")
-script = ExtResource("2_lajc7")
+tile_map_data = PackedByteArray("AAD//wAAAAAIAAAAAAAAAAAAAAAIAAAAAAABAAAAAAAIAAAAAAACAAAAAAAIAAAAAAADAAAAAAAIAAAAAAADAAEAAAAIAAAAAAAEAAEAAAAIAAAAAAA=")
+tile_set = SubResource("TileSet_qt7hk")
+script = ExtResource("2_qt7hk")
 chunk_size = 5
-
-[node name="Grass and Coins" type="TileMapLayer" parent="."]
