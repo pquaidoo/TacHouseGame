@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://d2jkbmu8lpo4o"]
+
+[node name="Coin" type="Area2D"]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+region_enabled = true
+region_rect = Rect2(0, 0, 512, 512)
+metadata/_edit_group_ = true
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
