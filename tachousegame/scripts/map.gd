@@ -4,33 +4,28 @@ extends Area2D
 # ============================================================
 #  MAP CONTROLLER (Editor + Runtime)
 # ------------------------------------------------------------
-#  This node does NOT draw tiles itself.
-#  It coordinates child layers:
-#    1) Ground Layer (TileMapLayer) generates the base map
-#    2) Grass Layer  (TileMapLayer) paints decorations over ground
+#  Responsibilities:
+#    - Coordinate map layers (ground, grass, etc.)
+#    - Convert mouse -> tile cell -> chunk coords
+#    - Drive a separate ChunkHighlight node (draws above layers)
 #
-#  With @tool enabled, changing exported values in the Inspector
-#  can rebuild the map instantly inside the editor.
+#  Non-responsibilities:
+#    - Does NOT draw tiles itself
+#    - Does NOT draw highlight itself (ChunkHighlight does)
 # ============================================================
 
 
 # ============================================================
 #  SECTION: Map Generation Settings
-# ------------------------------------------------------------
-#  chunk_size: how many tiles wide/tall one chunk is
-#  map_size:   how many chunks in the whole map (square: map_size x map_size)
-#  seed:       random seed used by layers that need randomness (like grass)
 # ============================================================
 
 @export var chunk_size: int = 5:
 	set(value):
-		# Keep chunk_size sane (>= 3 avoids "degenerate" chunks).
 		chunk_size = max(value, 3)
 		_request_rebuild()
 
 @export var map_size: int = 7:
 	set(value):
-		# Must be at least 1 chunk.
 		map_size = max(value, 1)
 		_request_rebuild()
 
@@ -43,63 +38,166 @@ extends Area2D
 # ============================================================
 #  SECTION: Scene Wiring (NodePaths)
 # ------------------------------------------------------------
-#  Drag the nodes from the Scene Tree into these fields.
-#
-#  Why NodePath?
-#  - It avoids hard-coding $"Node Names" (less brittle when renaming/moving nodes).
+#  Drag these nodes from the Scene Tree into the Inspector:
+#    - ground_layer_path    -> your Ground TileMapLayer
+#    - grass_layer_path     -> your Grass TileMapLayer (optional)
+#    - highlight_node_path  -> ChunkHighlight (Node2D) (optional)
 # ============================================================
 
 @export var ground_layer_path: NodePath
 @export var grass_layer_path: NodePath
+@export var highlight_node_path: NodePath
+
+
+# ============================================================
+#  SECTION: Chunk Hover / Selection
+# ============================================================
+
+@export var chunk_selection_enabled: bool = true
+
+# The chunk currently under the mouse. (-1, -1) means "none".
+var _hover_chunk: Vector2i = Vector2i(-1, -1)
 
 
 # ============================================================
 #  SECTION: Lifecycle
-# ------------------------------------------------------------
-#  _ready runs when the scene is running (and may run in editor because of @tool).
-#  We trigger an initial rebuild so the map appears immediately.
 # ============================================================
 
 func _ready() -> void:
+	# Ensure these callbacks run even if tool/editor timing is weird.
+	set_process(true)
+	set_process_unhandled_input(true)
+
 	rebuild()
 
 
 # ============================================================
 #  SECTION: Public API
-# ------------------------------------------------------------
-#  rebuild()
-#    - Finds the layer nodes
-#    - Pushes settings into the ground layer
-#    - Tells ground to generate tiles
-#    - Tells grass to paint on top of ground (if present)
 # ============================================================
 
 func rebuild() -> void:
-	var ground := get_node_or_null(ground_layer_path) as TileMapLayer
-	var grass := get_node_or_null(grass_layer_path) as TileMapLayer
+	var ground: TileMapLayer = get_node_or_null(ground_layer_path) as TileMapLayer
+	var grass: TileMapLayer = get_node_or_null(grass_layer_path) as TileMapLayer
 
-	# Ground is required. If it's not wired, do nothing (avoids null crashes).
 	if ground == null:
 		return
 
-	# --- Step 1: Build the ground layer (base map) ---
-	# We set the ground layer's parameters, then ask it to draw itself.
+	# --- Step 1: Ground builds the base tiles ---
 	ground.chunk_size = chunk_size
 	ground.map_size = map_size
 	ground.rebuild()
 
-	# --- Step 2: Paint grass on top of ground (optional) ---
-	# Grass doesn't need chunk logic; it uses ground's used cells as its "canvas".
+	# --- Step 2: Grass paints on top (optional) ---
 	if grass != null and grass.has_method("rebuild_from_ground"):
 		grass.rebuild_from_ground(ground, seed)
+
+	# Recompute highlight after rebuild (useful in editor)
+	_hover_chunk = Vector2i(-1, -1)
+	_update_highlight(Vector2i(-1, -1))
+
+
+# ============================================================
+#  SECTION: Hover Update Loop
+# ------------------------------------------------------------
+#  Each frame:
+#    - compute the chunk under the mouse
+#    - if it changed, update the ChunkHighlight node
+# ============================================================
+
+func _process(_delta: float) -> void:
+	if not chunk_selection_enabled:
+		return
+
+	var chunk: Vector2i = _chunk_at_mouse()
+	if chunk != _hover_chunk:
+		_hover_chunk = chunk
+		_update_highlight(_hover_chunk)
+
+
+# ============================================================
+#  SECTION: Click Selection
+# ============================================================
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not chunk_selection_enabled:
+		return
+
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		var chunk: Vector2i = _chunk_at_mouse()
+		if chunk.x != -1:
+			print("Selected chunk:", chunk)
+
+
+# ============================================================
+#  SECTION: Mouse -> Cell -> Chunk
+# ------------------------------------------------------------
+#  1) Convert mouse to ground-local space
+#  2) ground.local_to_map() -> tile cell (Vector2i)
+#  3) cell / chunk_size -> chunk coord (Vector2i)
+# ============================================================
+
+func _chunk_at_mouse() -> Vector2i:
+	var ground: TileMapLayer = get_node_or_null(ground_layer_path) as TileMapLayer
+	if ground == null:
+		return Vector2i(-1, -1)
+
+	var mouse_local: Vector2 = ground.to_local(get_global_mouse_position())
+	var cell: Vector2i = ground.local_to_map(mouse_local)
+
+	var n: int = max(chunk_size, 1)
+	var cx: int = int(floor(float(cell.x) / float(n)))
+	var cy: int = int(floor(float(cell.y) / float(n)))
+
+	# Bounds check (square map_size x map_size)
+	if cx < 0 or cy < 0 or cx >= map_size or cy >= map_size:
+		return Vector2i(-1, -1)
+
+	return Vector2i(cx, cy)
+
+
+# ============================================================
+#  SECTION: Highlight Driver (Map -> ChunkHighlight)
+# ------------------------------------------------------------
+#  ChunkHighlight is responsible for drawing.
+#  Map is responsible for providing 4 corner points in Map-local space.
+# ============================================================
+
+func _update_highlight(chunk: Vector2i) -> void:
+	var ground: TileMapLayer = get_node_or_null(ground_layer_path) as TileMapLayer
+	var hl: Node = get_node_or_null(highlight_node_path) as Node
+	if ground == null or hl == null:
+		return
+
+	# No valid chunk -> clear highlight
+	if chunk.x == -1:
+		if hl.has_method("clear"):
+			hl.call("clear")
+		return
+
+	var n: int = max(chunk_size, 1)
+	var base: Vector2i = Vector2i(chunk.x * n, chunk.y * n)
+
+	# Chunk corners in cell coords
+	var c0: Vector2i = base
+	var c1: Vector2i = base + Vector2i(n, 0)
+	var c2: Vector2i = base + Vector2i(n, n)
+	var c3: Vector2i = base + Vector2i(0, n)
+
+	# Transform-safe:
+	#   ground.map_to_local(cell) -> ground-local position
+	#   ground.to_global(...)     -> global position
+	#   Map.to_local(...)         -> Map-local position (what ChunkHighlight expects)
+	var p0: Vector2 = to_local(ground.to_global(ground.map_to_local(c0)))
+	var p1: Vector2 = to_local(ground.to_global(ground.map_to_local(c1)))
+	var p2: Vector2 = to_local(ground.to_global(ground.map_to_local(c2)))
+	var p3: Vector2 = to_local(ground.to_global(ground.map_to_local(c3)))
+
+	if hl.has_method("set_points"):
+		hl.call("set_points", [p0, p1, p2, p3])
 
 
 # ============================================================
 #  SECTION: Editor Rebuild Scheduling
-# ------------------------------------------------------------
-#  In @tool scripts, export setters can run at times when the scene tree
-#  isn't fully ready. call_deferred() schedules rebuild after the editor
-#  finishes its current update, which prevents many timing issues.
 # ============================================================
 
 func _request_rebuild() -> void:
