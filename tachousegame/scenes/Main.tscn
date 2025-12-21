@@ -6,7 +6,8 @@
 [node name="Main" type="Node2D"]
 
 [node name="Map" parent="." instance=ExtResource("1_elqb8")]
-map_size = 4
+position = Vector2(0, 0)
+map_size = 7
 seed = 12345
 
 [node name="Player Camera" parent="." instance=ExtResource("1_rvslj")]
