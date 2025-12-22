@@ -8,7 +8,6 @@
 [node name="Map" parent="." instance=ExtResource("1_elqb8")]
 position = Vector2(-110, 2)
 map_size = 9
-chunk_selection_enabled = false
 
 [node name="Player Camera" parent="." instance=ExtResource("1_rvslj")]
 drag_button = 1

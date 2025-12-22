@@ -7,7 +7,7 @@ extends Area2D
 #
 #  ROLE: High-level Map Controller (Editor + Runtime)
 # ------------------------------------------------------------
-#  Map.gd is the coordinator / “brain” of the map system.
+#  Map.gd is the coordinator / "brain" of the map system.
 #
 #  Responsibilities:
 #    - Own global map parameters (chunk_size, map_size, seed)
@@ -16,19 +16,24 @@ extends Area2D
 #        2) Grass decorates over ground
 #        3) Coins spawn on top of ground tiles (tile-based pickups)
 #    - Convert mouse -> tile cell -> chunk coords
-#    - Drive ChunkHighlight node (visual feedback)
 #    - Handle click selection + coin collection (testing input)
 #
 #  Non-responsibilities:
 #    - Does NOT draw tiles itself (TileMapLayers do)
-#    - Does NOT draw highlight shapes (ChunkHighlight does)
+#    - Does NOT draw highlight shapes (ChunkHighlight manages itself)
 #    - Does NOT implement camera behavior (Camera2D script does)
+#
+#  Tool mode (@tool):
+#    - Enables live preview of map generation in the editor
+#    - When you change chunk_size, map_size, or seed in the Inspector,
+#      the map automatically rebuilds in the editor
 #
 #  Scene wiring requirements (NodePaths in Inspector):
 #    - ground_layer_path:    TileMapLayer (REQUIRED)
 #    - grass_layer_path:     TileMapLayer (OPTIONAL)
 #    - coin_layer_path:      TileMapLayer (OPTIONAL but used for coins)
-#    - highlight_node_path:  Node2D (OPTIONAL but recommended)
+#    - castle_layer_path:    TileMapLayer (OPTIONAL)
+#    - character_layer_path: Node2D (OPTIONAL)
 #
 #  Important ordering rule:
 #    - Coins MUST spawn AFTER ground.rebuild()
@@ -77,7 +82,6 @@ var _click_tracking: bool = false
 @export var grass_layer_path: NodePath
 @export var coin_layer_path: NodePath
 @export var character_layer_path: NodePath
-@export var highlight_node_path: NodePath
 
 
 # ============================================================
@@ -92,11 +96,14 @@ var _click_tracking: bool = false
 
 
 # ============================================================
-#  SECTION: Chunk Hover / Selection State
+#  SECTION: Chunk Selection State
+# ------------------------------------------------------------
+#  chunk_selection_enabled:
+#    - Toggles whether chunk highlighting and selection are active
+#    - ChunkHighlight node reads this to enable/disable itself
 # ============================================================
 
 @export var chunk_selection_enabled: bool = true
-var _hover_chunk: Vector2i = Vector2i(-1, -1)
 
 
 # ============================================================
@@ -104,9 +111,6 @@ var _hover_chunk: Vector2i = Vector2i(-1, -1)
 # ============================================================
 
 func _ready() -> void:
-	# Tool scripts can have odd editor timing; make sure these run.
-	set_process(true)
-	set_process_unhandled_input(true)
 	rebuild()
 
 
@@ -145,24 +149,6 @@ func rebuild() -> void:
 	if character_layer != null and character_layer.has_method("setup"):
 		character_layer.call("setup", ground, self)
 
-	# Reset highlight after rebuild
-	_hover_chunk = Vector2i(-1, -1)
-	_update_highlight(_hover_chunk)
-
-
-# ============================================================
-#  SECTION: Hover Update Loop
-# ============================================================
-
-func _process(_delta: float) -> void:
-	if not chunk_selection_enabled:
-		return
-
-	var chunk: Vector2i = _chunk_at_mouse()
-	if chunk != _hover_chunk:
-		_hover_chunk = chunk
-		_update_highlight(_hover_chunk)
-
 
 # ============================================================
 #  SECTION: Click Selection + Coin Collect
@@ -190,23 +176,51 @@ func _unhandled_input(event: InputEvent) -> void:
 			if release_pos.distance_to(_click_press_pos) > click_threshold_px:
 				return  # treated as a drag
 
-			# --- 1) Coin collect (if present) ---
+			# Get references
 			var ground: TileMapLayer = get_node_or_null(ground_layer_path) as TileMapLayer
 			var coin_layer: TileMapLayer = get_node_or_null(coin_layer_path) as TileMapLayer
+			var character_layer: Node2D = get_node_or_null(character_layer_path) as Node2D
 
-			if ground != null and coin_layer != null and coin_layer.has_method("collect_coin"):
-				var mouse_local: Vector2 = ground.to_local(get_global_mouse_position())
-				var cell: Vector2i = ground.local_to_map(mouse_local)
+			if ground == null:
+				return
 
+			var mouse_local: Vector2 = ground.to_local(get_global_mouse_position())
+			var cell: Vector2i = ground.local_to_map(mouse_local)
+
+			# --- 1) Coin collect (highest priority) ---
+			if coin_layer != null and coin_layer.has_method("collect_coin"):
 				var gained: int = int(coin_layer.call("collect_coin", cell))
 				if gained > 0:
-					print("Collected coin:", gained, "at cell", cell)
+					DebugUtils.dprint("Collected coin: " + str(gained) + " at cell " + str(cell))
 					return
 
-			# --- 2) Chunk select fallback ---
+			# --- 2) Character click (select character) ---
+			if character_layer != null and character_layer.has_method("get_character_at_tile"):
+				var clicked_char: Character = character_layer.get_character_at_tile(cell)
+				if clicked_char != null:
+					var selection: Array[Character] = [clicked_char]
+					character_layer.set_selected_characters(selection)
+					DebugUtils.dprint("Selected character: " + str(clicked_char.character_type) + " " + str(clicked_char.id))
+					return
+
+			# --- 3) Chunk click with selected characters (send on mission) ---
+			if character_layer != null and character_layer.has_method("get_selected_characters"):
+				var selected: Array[Character] = character_layer.get_selected_characters()
+				if selected.size() > 0:
+					var chunk: Vector2i = _chunk_at_mouse()
+					if chunk.x != -1:
+						for char in selected:
+							char.set_mission_target(chunk)
+						DebugUtils.dprint("Sent " + str(selected.size()) + " character(s) to chunk " + str(chunk))
+						return
+
+			# --- 4) Chunk select fallback (deselect characters) ---
+			if character_layer != null and character_layer.has_method("clear_selection"):
+				character_layer.clear_selection()
+
 			var chunk: Vector2i = _chunk_at_mouse()
 			if chunk.x != -1:
-				print("Selected chunk:", chunk)
+				DebugUtils.dprint("Selected chunk: " + str(chunk))
 
 
 # ============================================================
@@ -229,42 +243,6 @@ func _chunk_at_mouse() -> Vector2i:
 		return Vector2i(-1, -1)
 
 	return Vector2i(cx, cy)
-
-
-# ============================================================
-#  SECTION: Highlight Driver (Map -> ChunkHighlight)
-# ============================================================
-
-func _update_highlight(chunk: Vector2i) -> void:
-	var ground: TileMapLayer = get_node_or_null(ground_layer_path) as TileMapLayer
-	var hl: Node = get_node_or_null(highlight_node_path)
-	if ground == null or hl == null:
-		return
-
-	if chunk.x == -1:
-		if hl.has_method("clear"):
-			hl.call("clear")
-		return
-
-	var n: int = max(chunk_size, 1)
-	var base: Vector2i = Vector2i(chunk.x * n, chunk.y * n)
-
-	var c0: Vector2i = base
-	var c1: Vector2i = base + Vector2i(n, 0)
-	var c2: Vector2i = base + Vector2i(n, n)
-	var c3: Vector2i = base + Vector2i(0, n)
-
-	# Transform-safe:
-	#   ground.map_to_local(cell) -> ground-local
-	#   ground.to_global(...)     -> global
-	#   Map.to_local(...)         -> map-local (expected by ChunkHighlight)
-	var p0: Vector2 = to_local(ground.to_global(ground.map_to_local(c0)))
-	var p1: Vector2 = to_local(ground.to_global(ground.map_to_local(c1)))
-	var p2: Vector2 = to_local(ground.to_global(ground.map_to_local(c2)))
-	var p3: Vector2 = to_local(ground.to_global(ground.map_to_local(c3)))
-
-	if hl.has_method("set_points"):
-		hl.call("set_points", [p0, p1, p2, p3])
 
 
 # ============================================================

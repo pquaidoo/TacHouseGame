@@ -4,43 +4,28 @@ extends Node2D
 #  FILE: chunk_highlight.gd
 #  NODE: ChunkHighlight (Node2D)
 #
-#  ROLE: “Dumb” highlight renderer (hover / selection visuals)
+#  ROLE: Self-managing chunk highlight renderer
 # ------------------------------------------------------------
-#  This node does NOT know what a “chunk” is.
-#  It does NOT read the mouse.
-#  It does NOT inspect TileMaps.
+#  This node autonomously handles:
+#    - Mouse hover detection
+#    - Chunk coordinate calculation
+#    - Visual highlight rendering
 #
-#  It only draws a shape (outline + optional fill) using 4 points
-#  that are provided by some controller (Map.gd).
+#  It queries the Map node for configuration (chunk_size, map_size)
+#  and the ground layer for coordinate transforms.
 #
-#
-#  INPUT CONTRACT (IMPORTANT)
-#  ------------------------------------------------------------
-#  The controller should call:
-#    - set_points([p0, p1, p2, p3])
-#      where p0..p3 are Vector2 positions in THIS NODE’S LOCAL SPACE.
-#    - set_visible_chunk(false) (or clear()) to hide the highlight
-#
-#  Expected shape:
-#    - points must represent a quad (4 corners in order around the shape)
-#    - (p0 -> p1 -> p2 -> p3) should trace the boundary consistently
-#
-#
-#  DRAW ORDER / PRIORITY
-#  ------------------------------------------------------------
-#  This node should render above tile layers. Two requirements:
-#    1) Place ChunkHighlight AFTER TileMapLayers in the scene tree
-#    2) Set a high z_index (either in editor or via highlight_z_index)
-#
-#  ISOMETRIC NOTE (Y OFFSET)
-#  ------------------------------------------------------------
-#  In isometric TileMaps, TileMapLayer.map_to_local(cell) typically returns
-#  an anchor point that is slightly BELOW the visible top edge of the tile.
-#  That can make outlines look “too low” by a few pixels.
-#
-#  We solve this at the RENDERING layer by applying a small screen-space
-#  vertical offset to all points before drawing.
+#  SCENE WIRING:
+#    - map_node_path: Path to the Map node (for chunk_size/map_size)
+#    - ground_layer_path: Path to the ground TileMapLayer
 # ============================================================
+
+
+# ============================================================
+#  SECTION: Scene Wiring
+# ============================================================
+
+@export var map_node_path: NodePath
+@export var ground_layer_path: NodePath
 
 
 # ============================================================
@@ -49,7 +34,7 @@ extends Node2D
 
 @export var enabled: bool = true
 
-# Fill inside the quad. Set to 0.0 for “outline only”.
+# Fill inside the quad. Set to 0.0 for "outline only".
 @export_range(0.0, 1.0, 0.01) var fill_alpha: float = 0.0
 
 # Outline opacity + thickness.
@@ -62,6 +47,7 @@ extends Node2D
 # z_index used to keep this node on top of map layers.
 @export var highlight_z_index: int = 100
 
+
 # ============================================================
 #  SECTION: Isometric Visual Correction (Y Offset)
 # ------------------------------------------------------------
@@ -69,10 +55,6 @@ extends Node2D
 #    - Applied to all points RIGHT BEFORE drawing.
 #    - Negative values move the highlight UP.
 #    - Typical values for 32x16 iso tiles: -4 to -10
-#
-#  Keep this here (rendering) instead of Map.gd so that:
-#    - chunk math stays correct
-#    - only the visual is adjusted
 # ============================================================
 
 @export var vertical_offset_px: float = -6.0
@@ -82,12 +64,15 @@ extends Node2D
 #  SECTION: Runtime State
 # ============================================================
 
-# When false, we render nothing even if points exist.
-# This is the “nice API” toggle for the controller.
-var _visible_chunk: bool = true
+# Current hovered chunk (or -1, -1 if none)
+var _hover_chunk: Vector2i = Vector2i(-1, -1)
+
+# Cached references
+var _map_node: Node = null
+var _ground_layer: TileMapLayer = null
 
 # Exactly 4 points (or empty when hidden).
-var points: PackedVector2Array = PackedVector2Array()
+var _points: PackedVector2Array = PackedVector2Array()
 
 
 # ============================================================
@@ -97,28 +82,114 @@ var points: PackedVector2Array = PackedVector2Array()
 func _ready() -> void:
 	z_index = highlight_z_index
 
+	# Cache node references
+	_map_node = get_node_or_null(map_node_path)
+	_ground_layer = get_node_or_null(ground_layer_path) as TileMapLayer
+
+
+func _process(_delta: float) -> void:
+	if not enabled:
+		return
+
+	# Ensure we have valid references
+	if _map_node == null:
+		_map_node = get_node_or_null(map_node_path)
+	if _ground_layer == null:
+		_ground_layer = get_node_or_null(ground_layer_path) as TileMapLayer
+
+	if _map_node == null or _ground_layer == null:
+		return
+
+	# Check if chunk selection is enabled on the map
+	if "chunk_selection_enabled" in _map_node and not _map_node.chunk_selection_enabled:
+		return
+
+	# Calculate current hovered chunk
+	var chunk: Vector2i = _chunk_at_mouse()
+
+	# Update highlight if chunk changed
+	if chunk != _hover_chunk:
+		_hover_chunk = chunk
+		_update_highlight(chunk)
+
 
 # ============================================================
-#  SECTION: Public API (called by Map.gd)
+#  SECTION: Mouse -> Cell -> Chunk Conversion
 # ============================================================
 
-# Toggle highlight visibility without forcing the controller to manage arrays.
-func set_visible_chunk(visible: bool) -> void:
-	_visible_chunk = visible
-	queue_redraw()
+func _chunk_at_mouse() -> Vector2i:
+	if _ground_layer == null or _map_node == null:
+		return Vector2i(-1, -1)
 
-# Controller provides the quad corners.
-# Accepts untyped Array because Map uses hl.call(...) and Godot is strict
-# about typed arrays through call().
-func set_points(p: Array) -> void:
-	points = PackedVector2Array(p)
-	_visible_chunk = true  # IMPORTANT: re-enable after a clear()
-	queue_redraw()
+	# Get chunk_size and map_size from the Map node
+	var chunk_size: int = 5
+	var map_size: int = 7
 
-# Convenience: hide + clear.
-func clear() -> void:
-	points = PackedVector2Array()
-	_visible_chunk = false
+	if "chunk_size" in _map_node:
+		chunk_size = max(int(_map_node.chunk_size), 1)
+	if "map_size" in _map_node:
+		map_size = max(int(_map_node.map_size), 1)
+
+	# Convert mouse to tile coordinates
+	var mouse_local: Vector2 = _ground_layer.to_local(get_global_mouse_position())
+	var cell: Vector2i = _ground_layer.local_to_map(mouse_local)
+
+	# Convert tile to chunk coordinates
+	var n: int = max(chunk_size, 1)
+	var cx: int = int(floor(float(cell.x) / float(n)))
+	var cy: int = int(floor(float(cell.y) / float(n)))
+
+	# Validate chunk is within map bounds
+	if cx < 0 or cy < 0 or cx >= map_size or cy >= map_size:
+		return Vector2i(-1, -1)
+
+	return Vector2i(cx, cy)
+
+
+# ============================================================
+#  SECTION: Highlight Update
+# ============================================================
+
+func _update_highlight(chunk: Vector2i) -> void:
+	if _ground_layer == null or _map_node == null:
+		_points = PackedVector2Array()
+		queue_redraw()
+		return
+
+	# Hide highlight if no valid chunk
+	if chunk.x == -1:
+		_points = PackedVector2Array()
+		queue_redraw()
+		return
+
+	# Get chunk_size from Map
+	var chunk_size: int = 5
+	if "chunk_size" in _map_node:
+		chunk_size = max(int(_map_node.chunk_size), 1)
+
+	var n: int = max(chunk_size, 1)
+	var base: Vector2i = Vector2i(chunk.x * n, chunk.y * n)
+
+	# Calculate the 4 corners of the chunk
+	var c0: Vector2i = base
+	var c1: Vector2i = base + Vector2i(n, 0)
+	var c2: Vector2i = base + Vector2i(n, n)
+	var c3: Vector2i = base + Vector2i(0, n)
+
+	# Transform corners to local coordinates
+	# ground.map_to_local(cell) -> ground-local
+	# ground.to_global(...) -> global
+	# Map.to_local(...) -> map-local (this node's parent should be Map)
+	var parent_node = get_parent()
+	if parent_node == null:
+		return
+
+	var p0: Vector2 = parent_node.to_local(_ground_layer.to_global(_ground_layer.map_to_local(c0)))
+	var p1: Vector2 = parent_node.to_local(_ground_layer.to_global(_ground_layer.map_to_local(c1)))
+	var p2: Vector2 = parent_node.to_local(_ground_layer.to_global(_ground_layer.map_to_local(c2)))
+	var p3: Vector2 = parent_node.to_local(_ground_layer.to_global(_ground_layer.map_to_local(c3)))
+
+	_points = PackedVector2Array([p0, p1, p2, p3])
 	queue_redraw()
 
 
@@ -129,9 +200,7 @@ func clear() -> void:
 func _draw() -> void:
 	if not enabled:
 		return
-	if not _visible_chunk:
-		return
-	if points.size() != 4:
+	if _points.size() != 4:
 		return
 
 	# Apply a small vertical correction for isometric visuals.
@@ -141,10 +210,10 @@ func _draw() -> void:
 	# Optional fill
 	if fill_alpha > 0.0:
 		var filled: PackedVector2Array = PackedVector2Array([
-			points[0] + offset,
-			points[1] + offset,
-			points[2] + offset,
-			points[3] + offset,
+			_points[0] + offset,
+			_points[1] + offset,
+			_points[2] + offset,
+			_points[3] + offset,
 		])
 		draw_colored_polygon(
 			filled,
@@ -153,11 +222,11 @@ func _draw() -> void:
 
 	# Outline (closed loop)
 	var loop: PackedVector2Array = PackedVector2Array([
-		points[0] + offset,
-		points[1] + offset,
-		points[2] + offset,
-		points[3] + offset,
-		points[0] + offset,
+		_points[0] + offset,
+		_points[1] + offset,
+		_points[2] + offset,
+		_points[3] + offset,
+		_points[0] + offset,
 	])
 	draw_polyline(
 		loop,

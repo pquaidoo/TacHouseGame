@@ -11,7 +11,7 @@ extends Area2D
 		if health > max_health:
 			health = max_health
 
-var speed: int = 1  # tiles per second movement speed
+var speed: int = 5  # tiles per second movement speed
 var health: int = 100
 var team: int = 0:
 	set(value):
@@ -136,7 +136,7 @@ func spawn_at_base(team_id: int, character_id: int, spawn_chunk: Vector2i, map_n
 	mission_complete = false
 	is_at_mission_chunk = false
 
-	print(character_type, " ", id, " spawned at chunk ", base_chunk, " tile ", current_tile)
+	DebugUtils.dprint(str(character_type) + " " + str(id) + " spawned at chunk " + str(base_chunk) + " tile " + str(current_tile))
 
 # ============================================================
 #  Player Commands
@@ -150,7 +150,7 @@ func set_mission_target(chunk: Vector2i) -> void:
 	fleeing = false
 
 	_start_pathing_to_destination()
-	print(character_type, " ", id, " mission assigned: chunk ", chunk)
+	DebugUtils.dprint(str(character_type) + " " + str(id) + " mission assigned: chunk " + str(chunk))
 
 func set_selected(selected: bool) -> void:
 	"""Set selection state (shows/hides selection indicator)"""
@@ -217,7 +217,7 @@ func _execute_mission_behaviors() -> void:
 
 	# All behaviors complete - return to base
 	if all_complete and not mission_complete:
-		print(character_type, " ", id, " mission complete! Returning to base.")
+		DebugUtils.dprint(str(character_type) + " " + str(id) + " mission complete! Returning to base.")
 		mission_complete = true
 		is_at_mission_chunk = false
 		_start_pathing_to_destination()
@@ -229,7 +229,7 @@ func _execute_mission_behaviors() -> void:
 func _behavior_fight_traveling() -> bool:
 	"""Fight enemies while traveling"""
 	if seen_enemies.size() > 0:
-		print(character_type, " ", id, " FIGHT! (traveling)")
+		DebugUtils.dprint(str(character_type) + " " + str(id) + " FIGHT! (traveling)")
 		# TODO: Implement combat
 		return false
 	return false
@@ -244,7 +244,7 @@ func _behavior_coin_traveling() -> void:
 func _behavior_run_away() -> bool:
 	"""Flee to base if enemies nearby"""
 	if seen_enemies.size() > 0 and not fleeing:
-		print(character_type, " ", id, " RUN AWAY!")
+		DebugUtils.dprint(str(character_type) + " " + str(id) + " RUN AWAY!")
 		fleeing = true
 		mission_complete = true
 		is_at_mission_chunk = false
@@ -259,7 +259,7 @@ func _behavior_run_away() -> bool:
 func _behavior_fight_mission() -> bool:
 	"""Fight enemies in mission chunk"""
 	if seen_enemies.size() > 0:
-		print(character_type, " ", id, " FIGHT! (mission)")
+		DebugUtils.dprint(str(character_type) + " " + str(id) + " FIGHT! (mission)")
 		# TODO: Implement combat
 		return false  # Still enemies
 	return true  # No enemies
@@ -279,7 +279,7 @@ func _behavior_coin_mission() -> bool:
 func _behavior_build() -> void:
 	"""Build structure"""
 	# TODO: Implement building
-	print(character_type, " ", id, " BUILD!")
+	DebugUtils.dprint(str(character_type) + " " + str(id) + " BUILD!")
 
 # ============================================================
 #  Vision & Detection
@@ -371,7 +371,7 @@ func _path_to_tile(destination: Vector2i) -> void:
 	move_timer = 0.0
 
 	if path.size() == 0 and current_tile != destination:
-		print(character_type, " ", id, " no path to ", destination)
+		DebugUtils.dprint(str(character_type) + " " + str(id) + " no path to " + str(destination))
 
 func _update_movement(delta: float) -> void:
 	"""Move along path tile by tile"""
@@ -411,14 +411,14 @@ func _on_path_complete() -> void:
 
 func _on_reach_mission_chunk() -> void:
 	"""Called when entering mission chunk"""
-	print(character_type, " ", id, " reached mission chunk ", target_chunk)
+	DebugUtils.dprint(str(character_type) + " " + str(id) + " reached mission chunk " + str(target_chunk))
 	is_at_mission_chunk = true
 	fleeing = false
 	_scan_entire_chunk(current_chunk)
 
 func _on_return_to_base() -> void:
 	"""Called when returning to base"""
-	print(character_type, " ", id, " returned to base")
+	DebugUtils.dprint(str(character_type) + " " + str(id) + " returned to base")
 	is_at_mission_chunk = false
 	mission_complete = false
 	fleeing = false
@@ -505,7 +505,7 @@ func _collect_coin(coin_tile: Vector2i) -> void:
 
 	var amount = int(coin_layer.call("collect_coin", coin_tile))
 	if amount > 0:
-		print(character_type, " ", id, " collected ", amount, " coins at ", coin_tile)
+		DebugUtils.dprint(str(character_type) + " " + str(id) + " collected " + str(amount) + " coins at " + str(coin_tile))
 		seen_coins.erase(coin_tile)
 
 # ============================================================
@@ -515,14 +515,14 @@ func _collect_coin(coin_tile: Vector2i) -> void:
 func take_damage(amount: int) -> void:
 	"""Take damage"""
 	health -= amount
-	print(character_type, " ", id, " took ", amount, " damage. Health: ", health, "/", max_health)
+	DebugUtils.dprint(str(character_type) + " " + str(id) + " took " + str(amount) + " damage. Health: " + str(health) + "/" + str(max_health))
 
 	if health <= 0:
 		_die()
 
 func _die() -> void:
 	"""Character dies"""
-	print(character_type, " ", id, " died!")
+	DebugUtils.dprint(str(character_type) + " " + str(id) + " died!")
 	if character_layer != null:
 		character_layer.kill_character(id)
 

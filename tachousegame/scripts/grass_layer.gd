@@ -28,12 +28,6 @@ extends TileMapLayer
 #    - patch_coverage (0..1): ~ fraction of ground tiles painted as grass
 #    - patch_size     (0..1): many small patches -> fewer large patches
 #
-#  DEBUG:
-#    - debug_print_stats prints counts of thick/medium/thin placed.
-#    - debug_verify_tiles prints a limited number of cells where we compare:
-#         intended atlas vs placed atlas + source id
-#      Use this to catch wrong atlas coords or wrong source_id.
-#
 #  Public API (called by Map.gd):
 #    - rebuild_from_ground(ground, seed)
 # ============================================================
@@ -106,20 +100,6 @@ extends TileMapLayer
 @export_range(0.10, 1.00, 0.01) var density: float = 0.85
 
 
-# ============================================================
-#  SECTION: Debug Controls
-# ============================================================
-
-@export var debug_print_stats: bool = true
-
-# When true, we read back what was placed after set_cell() and print it.
-# This helps catch wrong atlas coords or wrong source_id.
-@export var debug_verify_tiles: bool = false
-
-# Hard limit so the console doesn't explode.
-@export var debug_verify_limit: int = 20
-
-var _debug_verified: int = 0
 
 
 # ============================================================
@@ -149,7 +129,6 @@ var _debug_verified: int = 0
 func rebuild_from_ground(ground: TileMapLayer, seed: int) -> void:
 	# Clear existing decorative grass first.
 	clear()
-	_debug_verified = 0
 
 	if ground == null:
 		return
@@ -232,33 +211,6 @@ func rebuild_from_ground(ground: TileMapLayer, seed: int) -> void:
 		placed_medium += int(result.get("new_medium", 0))
 		placed_thin += int(result.get("new_thin", 0))
 
-	if debug_print_stats:
-		print(
-			"[GrassLayer] total_cells=", total_cells,
-			" target_tiles=", target_tiles,
-			" placed_total=", placed_total,
-			" (thick=", placed_thick,
-			" medium=", placed_medium,
-			" thin=", placed_thin, ")"
-		)
-		print(
-			"[GrassLayer] patch_count=", patch_count,
-			" avg_patch_tiles=", avg_patch_tiles,
-			" steps=", steps,
-			" core_step=", core_step,
-			" mid_step=", mid_step,
-			" brush_radius_min=", brush_radius_min,
-			" brush_radius_max=", brush_radius_max,
-			" keep_direction_chance=", keep_direction_chance,
-			" diagonal_step_chance=", diagonal_step_chance,
-			" recenter_chance=", recenter_chance,
-			" branch_chance=", branch_chance,
-			" branch_length_scale=", branch_length_scale,
-			" density=", density,
-			" stamp_chance=", stamp_chance,
-			" ring_scale=", ring_scale,
-			" source_id=", source_id
-		)
 
 
 # ============================================================
@@ -539,18 +491,6 @@ func _stamp_disk(
 			else:
 				new_thin += 1
 
-			# DEBUG: Verify what was actually placed
-			if debug_verify_tiles and _debug_verified < debug_verify_limit:
-				var placed_atlas: Vector2i = get_cell_atlas_coords(cell)
-				var placed_src: int = get_cell_source_id(cell)
-				print(
-					"[GrassLayer VERIFY] cell=", cell,
-					" intended_atlas=", atlas,
-					" placed_atlas=", placed_atlas,
-					" placed_source_id=", placed_src,
-					" expected_source_id=", source_id
-				)
-				_debug_verified += 1
 
 	return {
 		"new_total": newly_painted,

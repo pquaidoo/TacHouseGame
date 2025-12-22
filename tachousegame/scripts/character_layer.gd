@@ -108,7 +108,7 @@ func spawn_character(team: int, chunk: Vector2i, spawn_tile: Vector2i = Vector2i
 	characters.append(char)
 	characters_by_id[char_id] = char
 
-	print("Character Layer: Spawned character ", char_id, " for team ", team, " at chunk ", chunk)
+	DebugUtils.dprint("Character Layer: Spawned character " + str(char_id) + " for team " + str(team) + " at chunk " + str(chunk))
 
 	return char
 
@@ -129,7 +129,7 @@ func kill_character(char_id: int) -> void:
 	if is_instance_valid(char):
 		char.queue_free()
 
-	print("Character Layer: Removed character ", char_id)
+	DebugUtils.dprint("Character Layer: Removed character " + str(char_id))
 
 
 # ============================================================
@@ -255,14 +255,11 @@ func get_all_characters() -> Array[Character]:
 # ============================================================
 
 func _debug_spawn_test_character() -> void:
-	"""TEMP: Spawn a test character for Phase 2 testing"""
-	print("Character Layer: Spawning debug test character at tile (4,3)")
+	"""TEMP: Spawn a test character for testing player control"""
+	DebugUtils.dprint("Character Layer: Spawning debug test character at tile (4,3)")
 
 	# Spawn at chunk (0,0), tile (4,3)
 	var char = spawn_character(0, Vector2i(0, 0), Vector2i(4, 3))
 
-	# Wait a moment, then send on a mission
-	await get_tree().create_timer(1.0).timeout
-
-	print("Character Layer: Sending test character to chunk (1,1)")
-	char.set_mission_target(Vector2i(1, 1))
+	# Auto-pathing removed - character now waits for player control
+	# Click the character to select it, then click a chunk to send it on a mission
