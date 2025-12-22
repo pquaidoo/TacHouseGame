@@ -76,6 +76,7 @@ var _click_tracking: bool = false
 @export var castle_layer_path: NodePath
 @export var grass_layer_path: NodePath
 @export var coin_layer_path: NodePath
+@export var character_layer_path: NodePath
 @export var highlight_node_path: NodePath
 
 
@@ -138,6 +139,11 @@ func rebuild() -> void:
 	if coins != null and coins.has_method("clear_coins") and coins.has_method("place_coin"):
 		coins.call("clear_coins")
 		_spawn_coins(ground, coins)
+
+	# --- Step 4: Setup character layer AFTER ground exists (optional) ---
+	var character_layer: Node2D = get_node_or_null(character_layer_path) as Node2D
+	if character_layer != null and character_layer.has_method("setup"):
+		character_layer.call("setup", ground, self)
 
 	# Reset highlight after rebuild
 	_hover_chunk = Vector2i(-1, -1)

@@ -1,0 +1,26 @@
+[gd_scene load_steps=5 format=3 uid="uid://brrk23q5rr6jm"]
+
+[ext_resource type="Script" uid="uid://csi0vg28wwa6h" path="res://scripts/character.gd" id="1_3i3nt"]
+[ext_resource type="Texture2D" uid="uid://cg8t16rwb6nmq" path="res://assets/PAWNS/pawn1.png" id="1_53v7d"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_3i3nt"]
+size = Vector2(4, 8)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_select"]
+radius = 8.0
+
+[node name="Character" type="Area2D"]
+z_index = 75
+script = ExtResource("1_3i3nt")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("1_53v7d")
+
+[node name="SelectionIndicator" type="Polygon2D" parent="."]
+visible = false
+color = Color(1, 1, 0, 0.5)
+polygon = PackedVector2Array(-6, -10, 6, -10, 6, 10, -6, 10)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 1)
+shape = SubResource("RectangleShape2D_3i3nt")
