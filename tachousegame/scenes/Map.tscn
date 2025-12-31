@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=4 uid="uid://b6ywwbkgxqmhy"]
+[gd_scene load_steps=17 format=4 uid="uid://b6ywwbkgxqmhy"]
 
 [ext_resource type="Script" uid="uid://d1rgb4ccfyu2v" path="res://scripts/map.gd" id="1_lajc7"]
 [ext_resource type="Texture2D" uid="uid://cvfc6j5pu4m6b" path="res://assets/tilemap.png" id="2_lajc7"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" uid="uid://cch6bpciky7b6" path="res://scripts/castle_layer.gd" id="4_inly4"]
 [ext_resource type="Script" uid="uid://du1l6bppadqfq" path="res://scripts/grass_layer.gd" id="4_tm3qm"]
 [ext_resource type="Script" uid="uid://coxji0ssjw4by" path="res://scripts/chunk_highlight.gd" id="5_yyirk"]
+[ext_resource type="Script" uid="uid://bvipebgftmtfo" path="res://scripts/character_layer.gd" id="6_char"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_tm3qm"]
 texture = ExtResource("2_lajc7")
@@ -412,7 +413,7 @@ ground_layer_path = NodePath("Ground Layer")
 castle_layer_path = NodePath("Castle Layer")
 grass_layer_path = NodePath("Grass Layer")
 coin_layer_path = NodePath("Coin Layer")
-highlight_node_path = NodePath("Chunk Highlight")
+character_layer_path = NodePath("Character Layer")
 metadata/_edit_group_ = true
 
 [node name="Ground Layer" type="TileMapLayer" parent="."]
@@ -448,7 +449,13 @@ density = 0.7
 debug_verify_tiles = true
 thick_grass_atlas_coords = Array[Vector2i]([])
 
+[node name="Character Layer" type="Node2D" parent="."]
+z_index = 75
+script = ExtResource("6_char")
+
 [node name="Chunk Highlight" type="Node2D" parent="."]
 z_index = 100
 script = ExtResource("5_yyirk")
+map_node_path = NodePath("..")
+ground_layer_path = NodePath("../Ground Layer")
 highlight_color = Color(0.3692784, 0.6570411, 0.37414998, 1)
