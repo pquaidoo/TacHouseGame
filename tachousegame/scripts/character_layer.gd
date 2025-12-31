@@ -46,8 +46,7 @@ var ground_layer: TileMapLayer = null
 #  SECTION: Character Tracking
 # ============================================================
 
-var characters: Array[Character] = []
-var characters_by_id: Dictionary = {}  # id -> Character
+var characters: Dictionary = {}  # id -> Character
 var next_character_id: int = 0
 
 
@@ -68,7 +67,6 @@ func setup(ground: TileMapLayer, map_node: Node) -> void:
 	map = map_node
 
 	# TEMP DEBUG: Spawn a test character
-	# Remove this after Phase 2 testing
 	if not Engine.is_editor_hint():
 		call_deferred("_debug_spawn_test_character")
 
@@ -79,12 +77,11 @@ func setup(ground: TileMapLayer, map_node: Node) -> void:
 
 func clear_characters() -> void:
 	"""Remove all characters from the game"""
-	for char in characters:
+	for char in characters.values():
 		if is_instance_valid(char):
 			char.queue_free()
 
 	characters.clear()
-	characters_by_id.clear()
 	selected_characters.clear()
 	next_character_id = 0
 
@@ -105,8 +102,7 @@ func spawn_character(team: int, chunk: Vector2i, spawn_tile: Vector2i = Vector2i
 	char.spawn_at_base(team, char_id, chunk, map, spawn_tile)
 
 	# Track character
-	characters.append(char)
-	characters_by_id[char_id] = char
+	characters[char_id] = char
 
 	DebugUtils.dprint("Character Layer: Spawned character " + str(char_id) + " for team " + str(team) + " at chunk " + str(chunk))
 
@@ -115,14 +111,13 @@ func spawn_character(team: int, chunk: Vector2i, spawn_tile: Vector2i = Vector2i
 
 func kill_character(char_id: int) -> void:
 	"""Remove a character by ID (called when character dies)"""
-	if not char_id in characters_by_id:
+	if not char_id in characters:
 		return
 
-	var char = characters_by_id[char_id]
+	var char = characters[char_id]
 
 	# Remove from tracking
-	characters.erase(char)
-	characters_by_id.erase(char_id)
+	characters.erase(char_id)
 	selected_characters.erase(char)
 
 	# Remove from scene
@@ -138,7 +133,7 @@ func kill_character(char_id: int) -> void:
 
 func get_character_at_tile(tile: Vector2i) -> Character:
 	"""Get the character at a specific tile (for click selection)"""
-	for char in characters:
+	for char in characters.values():
 		if not is_instance_valid(char):
 			continue
 
@@ -152,7 +147,7 @@ func get_characters_at_tile(tile: Vector2i) -> Array[Character]:
 	"""Get all characters at a specific tile"""
 	var result: Array[Character] = []
 
-	for char in characters:
+	for char in characters.values():
 		if not is_instance_valid(char):
 			continue
 
@@ -166,7 +161,7 @@ func get_characters_in_chunk(chunk: Vector2i) -> Array[Character]:
 	"""Get all characters in a specific chunk"""
 	var result: Array[Character] = []
 
-	for char in characters:
+	for char in characters.values():
 		if not is_instance_valid(char):
 			continue
 
@@ -180,7 +175,7 @@ func get_enemies_of_team(team: int) -> Array[Character]:
 	"""Get all characters that are enemies of the given team"""
 	var result: Array[Character] = []
 
-	for char in characters:
+	for char in characters.values():
 		if not is_instance_valid(char):
 			continue
 
@@ -192,7 +187,7 @@ func get_enemies_of_team(team: int) -> Array[Character]:
 
 func get_enemy_at_tile(tile: Vector2i, friendly_team: int) -> Character:
 	"""Get enemy character at tile (used by character vision)"""
-	for char in characters:
+	for char in characters.values():
 		if not is_instance_valid(char):
 			continue
 
@@ -238,16 +233,18 @@ func clear_selection() -> void:
 
 func get_character_by_id(char_id: int) -> Character:
 	"""Get character by ID"""
-	if char_id in characters_by_id:
-		return characters_by_id[char_id]
+	if char_id in characters:
+		return characters[char_id]
 	return null
 
 
 func get_all_characters() -> Array[Character]:
 	"""Get all active characters"""
-	# Clean up invalid references
-	characters = characters.filter(func(c): return is_instance_valid(c))
-	return characters
+	var result: Array[Character] = []
+	for char in characters.values():
+		if is_instance_valid(char):
+			result.append(char)
+	return result
 
 
 # ============================================================

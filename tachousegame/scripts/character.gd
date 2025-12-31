@@ -2,82 +2,54 @@ class_name Character
 extends Area2D
 
 # ============================================================
-#  Universal Fields (from CharacterClassDocs.txt)
+# Character Fields 
 # ============================================================
 
+#Stats
 @export var max_health: int = 100:
 	set(value):
 		max_health = max(value, 1)
-		if health > max_health:
-			health = max_health
+		if current_health > max_health:
+			current_health = max_health
+var current_health: int = max_health
+@export var speed: int = 5  # tiles per second movement speed
+var move_timer: float = 0.0 # += delta * speed. When =< 1.0 Character Moves
 
-var speed: int = 5  # tiles per second movement speed
-var health: int = 100
-var team: int = 0:
+#Id
+var id: int = -1
+var team: int = 0: # each number is a different team
 	set(value):
 		team = clamp(value, 0, 3)
+var character_type: String = "char"
 
-var id: int = -1
-var character_type: String = "Pawn"
-var mission_complete: bool = false  # false = going to mission, true = returning
-var vision: int = 1  # tiles around character (1 = 3x3 square)
-
-# ============================================================
-#  Map Integration References
-# ============================================================
-
+#Parents
 var map: Node = null
 var character_layer: Node2D = null
 var ground_layer: TileMapLayer = null
 
-# ============================================================
-#  Position & Navigation
-# ============================================================
-
+#Location
 var current_tile: Vector2i = Vector2i(0, 0)
 var current_chunk: Vector2i = Vector2i(0, 0)
 var target_chunk: Vector2i = Vector2i(-1, -1)
 var base_chunk: Vector2i = Vector2i(0, 0)
 
+#Movement
 var path: Array[Vector2i] = []
 var path_index: int = 0
-var is_moving: bool = false
-var move_timer: float = 0.0
 
-# ============================================================
-#  Behavior System - Enums
-# ============================================================
+#State
+var current_state: State = null
 
-enum TravelBehavior {
-	TRAVEL,      # Path to target chunk
-	FIGHT,       # Engage enemies encountered
-	COIN,        # Collect coins along the way
-	RUN_AWAY     # Flee to base when enemies near
-}
-
-enum MissionBehavior {
-	DONE,   # Complete mission and return
-	FIGHT,  # Fight enemies in chunk
-	COIN,   # Collect coins in chunk
-	BUILD   # Build structures
-}
-
-# ============================================================
-#  Behavior Queues (Override in child classes)
-# ============================================================
-
-var traveling_behaviors: Array[TravelBehavior] = [TravelBehavior.TRAVEL]
-var mission_behaviors: Array[MissionBehavior] = [MissionBehavior.DONE]
-
-# ============================================================
-#  State Management
-# ============================================================
-
-var is_at_mission_chunk: bool = false
-var fleeing: bool = false
+var is_traveling: bool = false
+var mission_complete: bool = true  # Start true (idle at base)
 var is_selected: bool = false
 
-# Vision tracking
+var interruptBehaviorList: Array[State] = []    # Checked first always
+var missionBehaviorList: Array[State] = []      # Checked when at mission
+var travelBehaviorList: Array[State] = []       # Checked when traveling/idle
+
+#Vision
+@export var vision: int = 1  # tiles around character (1 = 3x3 square)
 var seen_enemies: Array[Character] = []
 var seen_coins: Array[Vector2i] = []
 
@@ -86,31 +58,39 @@ var seen_coins: Array[Vector2i] = []
 # ============================================================
 
 func _ready() -> void:
-	health = max_health
+	current_health = max_health
+
+	# Initialize behavior lists
+	_initialize_behavior_lists()
+
+func _initialize_behavior_lists() -> void:
+	"""Set up behavior lists with state instances"""
+	
+	missionBehaviorList.append(MissionCompleteState.new(self))  # Fallback
+
+	# Travel behaviors (checked when traveling or idle)
+	travelBehaviorList.append(TravelState.new(self))
+	travelBehaviorList.append(IdleState.new(self))
 
 # ============================================================
 #  Main Process Loop
 # ============================================================
 
 func _process(delta: float) -> void:
-	if not is_moving:
-		return
-
 	# Scan surroundings
 	_scan_vision()
 
-	# Execute behaviors
-	_update_behavior()
-
-	# Move along path
-	_update_movement(delta)
+	# Execute behaviors (states handle their own logic including movement)
+	_update_behavior(delta)
 
 # ============================================================
-#  Spawning
+#  Spawning 
+#  TODO: spawn at team specific chunks.
 # ============================================================
 
 func spawn_at_base(team_id: int, character_id: int, spawn_chunk: Vector2i, map_node: Node, spawn_tile_override: Vector2i = Vector2i(-1, -1)) -> void:
-	"""Spawn character at team's base chunk"""
+	"""Spawns Character at Top most chunk"""
+	#
 	team = team_id
 	id = character_id
 	base_chunk = spawn_chunk
@@ -133,9 +113,6 @@ func spawn_at_base(team_id: int, character_id: int, spawn_chunk: Vector2i, map_n
 		current_tile = spawn_tile
 		_update_visual_position()
 
-	mission_complete = false
-	is_at_mission_chunk = false
-
 	DebugUtils.dprint(str(character_type) + " " + str(id) + " spawned at chunk " + str(base_chunk) + " tile " + str(current_tile))
 
 # ============================================================
@@ -143,13 +120,17 @@ func spawn_at_base(team_id: int, character_id: int, spawn_chunk: Vector2i, map_n
 # ============================================================
 
 func set_mission_target(chunk: Vector2i) -> void:
-	"""Player assigns mission to this character"""
+	"""Player assigns mission to this character (only when IDLE at base)"""
+
+	# Only accept commands when IDLE at base
+	if current_chunk != base_chunk or target_chunk != Vector2i(-1, -1):
+		DebugUtils.dprint(str(character_type) + " " + str(id) + " cannot accept mission - not idle at base")
+		return
+
+	# Set mission target
 	target_chunk = chunk
 	mission_complete = false
-	is_at_mission_chunk = false
-	fleeing = false
 
-	_start_pathing_to_destination()
 	DebugUtils.dprint(str(character_type) + " " + str(id) + " mission assigned: chunk " + str(chunk))
 
 func set_selected(selected: bool) -> void:
@@ -162,131 +143,62 @@ func set_selected(selected: bool) -> void:
 		indicator.visible = selected
 
 # ============================================================
-#  Behavior Logic
+#  Behavior/State Logic
 # ============================================================
 
-func _update_behavior() -> void:
-	"""Execute behaviors based on current context"""
+func _update_behavior(delta: float) -> void:
+	"""Check behavior lists and execute valid state"""
 
-	if is_at_mission_chunk:
-		_execute_mission_behaviors()
+	# Step 1: Check interrupts first (always highest priority)
+	for state in interruptBehaviorList:
+		if state.is_valid():
+			_transition_to_state(state, delta)
+			return
+
+	# Step 2: Check context-appropriate list
+	var context_list: Array[State] = []
+
+	# At mission chunk? Check mission behaviors
+	if current_chunk == target_chunk and not mission_complete:
+		context_list = missionBehaviorList
 	else:
-		_execute_traveling_behaviors()
+		# Otherwise check travel/idle behaviors
+		context_list = travelBehaviorList
 
-func _execute_traveling_behaviors() -> void:
-	"""Execute traveling behavior queue"""
+	# Step 3: Find first valid state in context list
+	for state in context_list:
+		if state.is_valid():
+			_transition_to_state(state, delta)
+			return
 
-	for behavior in traveling_behaviors:
-		match behavior:
-			TravelBehavior.TRAVEL:
-				# Default - just keep pathing
-				pass
+	# Step 4: No valid state found - this shouldn't happen
+	# Keep current state if one exists
+	if current_state != null:
+		current_state.do(delta)
 
-			TravelBehavior.FIGHT:
-				if _behavior_fight_traveling():
-					return
+func _transition_to_state(new_state: State, delta: float) -> void:
+	"""Transition to a new state"""
+	# Check if we're changing states
+	var is_new_state = (current_state != new_state)
 
-			TravelBehavior.COIN:
-				_behavior_coin_traveling()
+	# Exit old state
+	if current_state != null and is_new_state:
+		current_state.on_exit()
 
-			TravelBehavior.RUN_AWAY:
-				if _behavior_run_away():
-					return
+	# Enter new state (only if different)
+	if is_new_state:
+		current_state = new_state
+		current_state.on_enter()
 
-func _execute_mission_behaviors() -> void:
-	"""Execute mission behavior queue"""
-
-	var all_complete = true
-
-	for behavior in mission_behaviors:
-		match behavior:
-			MissionBehavior.DONE:
-				# Will complete at end
-				pass
-
-			MissionBehavior.FIGHT:
-				if not _behavior_fight_mission():
-					all_complete = false
-
-			MissionBehavior.COIN:
-				if not _behavior_coin_mission():
-					all_complete = false
-
-			MissionBehavior.BUILD:
-				_behavior_build()
-
-	# All behaviors complete - return to base
-	if all_complete and not mission_complete:
-		DebugUtils.dprint(str(character_type) + " " + str(id) + " mission complete! Returning to base.")
-		mission_complete = true
-		is_at_mission_chunk = false
-		_start_pathing_to_destination()
-
-# ============================================================
-#  Traveling Behavior Implementations
-# ============================================================
-
-func _behavior_fight_traveling() -> bool:
-	"""Fight enemies while traveling"""
-	if seen_enemies.size() > 0:
-		DebugUtils.dprint(str(character_type) + " " + str(id) + " FIGHT! (traveling)")
-		# TODO: Implement combat
-		return false
-	return false
-
-func _behavior_coin_traveling() -> void:
-	"""Collect coins while traveling"""
-	for coin_tile in seen_coins:
-		if _is_tile_on_path(coin_tile) or _is_tile_adjacent(coin_tile):
-			_collect_coin(coin_tile)
-			break
-
-func _behavior_run_away() -> bool:
-	"""Flee to base if enemies nearby"""
-	if seen_enemies.size() > 0 and not fleeing:
-		DebugUtils.dprint(str(character_type) + " " + str(id) + " RUN AWAY!")
-		fleeing = true
-		mission_complete = true
-		is_at_mission_chunk = false
-		_start_pathing_to_destination()
-		return true
-	return false
-
-# ============================================================
-#  Mission Behavior Implementations
-# ============================================================
-
-func _behavior_fight_mission() -> bool:
-	"""Fight enemies in mission chunk"""
-	if seen_enemies.size() > 0:
-		DebugUtils.dprint(str(character_type) + " " + str(id) + " FIGHT! (mission)")
-		# TODO: Implement combat
-		return false  # Still enemies
-	return true  # No enemies
-
-func _behavior_coin_mission() -> bool:
-	"""Collect coins in mission chunk"""
-	if seen_coins.size() > 0:
-		var coin_tile = seen_coins[0]
-		if _is_tile_adjacent(coin_tile) or current_tile == coin_tile:
-			_collect_coin(coin_tile)
-		else:
-			# Path to coin
-			_path_to_tile(coin_tile)
-		return false  # Still coins
-	return true  # All collected
-
-func _behavior_build() -> void:
-	"""Build structure"""
-	# TODO: Implement building
-	DebugUtils.dprint(str(character_type) + " " + str(id) + " BUILD!")
+	# Execute current state (always)
+	current_state.do(delta)
 
 # ============================================================
 #  Vision & Detection
 # ============================================================
 
 func _scan_vision() -> void:
-	"""Scan tiles within vision range"""
+	"""Scan tiles within vision range """
 	seen_enemies.clear()
 	seen_coins.clear()
 
@@ -307,12 +219,11 @@ func _scan_vision() -> void:
 			if enemy != null:
 				seen_enemies.append(enemy)
 
-	# At mission chunk - scan entire chunk
-	if is_at_mission_chunk:
-		_scan_entire_chunk(current_chunk)
-
 func _scan_entire_chunk(chunk: Vector2i) -> void:
-	"""Scan entire chunk when at mission"""
+	"""
+	Scans ALL tiles in a given chunk and appends found coins/enemies 
+	to the character's vision lists.
+	"""
 	if ground_layer == null or map == null:
 		return
 
@@ -332,7 +243,7 @@ func _scan_entire_chunk(chunk: Vector2i) -> void:
 				seen_enemies.append(enemy)
 
 func _has_coin_at_tile(tile: Vector2i) -> bool:
-	"""Check if coin exists at tile"""
+	"""HELPER: Check if coin exists at tile"""
 	if map == null:
 		return false
 
@@ -343,31 +254,24 @@ func _has_coin_at_tile(tile: Vector2i) -> bool:
 	return coin_layer.get_cell_source_id(tile) != -1
 
 func _get_enemy_at_tile(tile: Vector2i) -> Character:
-	"""Get enemy character at tile"""
+	"""HELPER Get enemy character at tile"""
 	if character_layer == null:
 		return null
 
 	return character_layer.get_enemy_at_tile(tile, team)
 
 # ============================================================
-#  Pathfinding & Movement
+#  Pathfinding & Movement Utilities
 # ============================================================
 
-func _start_pathing_to_destination() -> void:
-	"""Calculate path to current destination"""
-	var destination_chunk = base_chunk if mission_complete else target_chunk
-	var destination_tile = _get_chunk_center_tile(destination_chunk)
-
-	_path_to_tile(destination_tile)
-
 func _path_to_tile(destination: Vector2i) -> void:
-	"""Calculate A* path to destination"""
+	"""Resets movement variables for new path"""
 	if ground_layer == null:
 		return
 
 	path = Pathfinder.find_path(current_tile, destination, ground_layer, character_layer)
 	path_index = 0
-	is_moving = path.size() > 0
+	is_traveling = path.size() > 0
 	move_timer = 0.0
 
 	if path.size() == 0 and current_tile != destination:
@@ -396,38 +300,12 @@ func _update_movement(delta: float) -> void:
 			_on_path_complete()
 
 func _on_path_complete() -> void:
-	"""Called when path finishes"""
-	is_moving = false
+	"""Resets movement variables when path is complete"""
+	is_traveling = false
 	path.clear()
 	path_index = 0
 
-	# Reached mission chunk
-	if not mission_complete and current_chunk == target_chunk:
-		_on_reach_mission_chunk()
-
-	# Returned to base
-	elif mission_complete and current_chunk == base_chunk:
-		_on_return_to_base()
-
-func _on_reach_mission_chunk() -> void:
-	"""Called when entering mission chunk"""
-	DebugUtils.dprint(str(character_type) + " " + str(id) + " reached mission chunk " + str(target_chunk))
-	is_at_mission_chunk = true
-	fleeing = false
-	_scan_entire_chunk(current_chunk)
-
-func _on_return_to_base() -> void:
-	"""Called when returning to base"""
-	DebugUtils.dprint(str(character_type) + " " + str(id) + " returned to base")
-	is_at_mission_chunk = false
-	mission_complete = false
-	fleeing = false
-	target_chunk = Vector2i(-1, -1)
-
-	# Find rest position
-	var rest_tile = _find_open_tile_in_chunk(base_chunk)
-	if rest_tile != Vector2i(-1, -1) and rest_tile != current_tile:
-		_path_to_tile(rest_tile)
+	# State system will handle transitions automatically
 
 # ============================================================
 #  Position Management
@@ -491,33 +369,15 @@ func _is_tile_walkable(tile: Vector2i) -> bool:
 	return ground_layer.get_cell_source_id(tile) != -1
 
 # ============================================================
-#  Coin Collection
-# ============================================================
-
-func _collect_coin(coin_tile: Vector2i) -> void:
-	"""Collect coin at tile"""
-	if map == null:
-		return
-
-	var coin_layer = map.get_node_or_null(map.coin_layer_path) as TileMapLayer
-	if coin_layer == null or not coin_layer.has_method("collect_coin"):
-		return
-
-	var amount = int(coin_layer.call("collect_coin", coin_tile))
-	if amount > 0:
-		DebugUtils.dprint(str(character_type) + " " + str(id) + " collected " + str(amount) + " coins at " + str(coin_tile))
-		seen_coins.erase(coin_tile)
-
-# ============================================================
 #  Combat
 # ============================================================
 
 func take_damage(amount: int) -> void:
 	"""Take damage"""
-	health -= amount
-	DebugUtils.dprint(str(character_type) + " " + str(id) + " took " + str(amount) + " damage. Health: " + str(health) + "/" + str(max_health))
+	current_health -= amount
+	DebugUtils.dprint(str(character_type) + " " + str(id) + " took " + str(amount) + " damage. Health: " + str(current_health) + "/" + str(max_health))
 
-	if health <= 0:
+	if current_health <= 0:
 		_die()
 
 func _die() -> void:
@@ -526,15 +386,3 @@ func _die() -> void:
 	if character_layer != null:
 		character_layer.kill_character(id)
 
-# ============================================================
-#  Helper Functions
-# ============================================================
-
-func _is_tile_adjacent(tile: Vector2i) -> bool:
-	"""Check if tile is adjacent"""
-	var dist = current_tile - tile
-	return abs(dist.x) <= 1 and abs(dist.y) <= 1
-
-func _is_tile_on_path(tile: Vector2i) -> bool:
-	"""Check if tile is on current path"""
-	return tile in path

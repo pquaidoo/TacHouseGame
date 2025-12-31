@@ -6,7 +6,8 @@
 [node name="Main" type="Node2D"]
 
 [node name="Map" parent="." instance=ExtResource("1_elqb8")]
-position = Vector2(-110, 2)
+position = Vector2(-162, -59)
+chunk_size = 7
 map_size = 9
 
 [node name="Player Camera" parent="." instance=ExtResource("1_rvslj")]
