@@ -29,7 +29,8 @@ static func find_path(
 	start: Vector2i,
 	end: Vector2i,
 	ground_layer: TileMapLayer,
-	character_layer: Node2D = null
+	character_layer: Node2D = null,
+	friendly_team: int = -1
 ) -> Array[Vector2i]:
 	"""
 	Find path from start to end tile using A* algorithm.
@@ -69,14 +70,8 @@ static func find_path(
 		# Check all neighbors
 		for neighbor in _get_neighbors(current):
 			# Skip unwalkable tiles
-			if not _is_walkable(neighbor, ground_layer, character_layer):
+			if not _is_walkable(neighbor, ground_layer, character_layer, end, friendly_team):
 				continue
-
-			# Allow end tile even if occupied (character will move there)
-			if neighbor == end and character_layer != null:
-				var chars = character_layer.get_characters_at_tile(neighbor)
-				# Only skip if occupied by someone else (not just the end position)
-				pass
 
 			var tentative_g_score = g_score[current] + 1
 
@@ -126,17 +121,30 @@ static func find_path_avoiding_enemies(
 #  SECTION: A* Helper Functions
 # ============================================================
 
-static func _is_walkable(tile: Vector2i, ground_layer: TileMapLayer, character_layer: Node2D) -> bool:
+static func _is_walkable(
+	tile: Vector2i,
+	ground_layer: TileMapLayer,
+	character_layer: Node2D,
+	destination: Vector2i,
+	friendly_team: int
+) -> bool:
 	"""Check if tile can be walked on"""
 
 	# Must have ground tile
 	if ground_layer.get_cell_source_id(tile) == -1:
 		return false
 
-	# For now, don't check character occupancy during pathfinding
-	# Characters can path through tiles that other characters occupy
-	# since they may move by the time we get there
-	# TODO: Add collision avoidance when characters are close to each other
+	# Allow destination tile even if occupied (character will move there eventually)
+	if tile == destination:
+		return true
+
+	# Check for friendly character occupation (avoid pathing through friendlies)
+	if character_layer != null and friendly_team >= 0:
+		var chars_at_tile = character_layer.get_characters_at_tile(tile)
+		for char in chars_at_tile:
+			if char != null and char.get_team() == friendly_team:
+				# Tile occupied by friendly - avoid it
+				return false
 
 	return true
 

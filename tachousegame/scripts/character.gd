@@ -41,7 +41,7 @@ var path_index: int = 0
 var current_state: State = null
 
 var is_traveling: bool = false
-var mission_complete: bool = true  # Start true (idle at base)
+var mission_complete: bool = false  # Start true (idle at base)
 var is_selected: bool = false
 
 var interruptBehaviorList: Array[State] = []    # Checked first always
@@ -63,14 +63,36 @@ func _ready() -> void:
 	# Initialize behavior lists
 	_initialize_behavior_lists()
 
+	# Assign random pawn sprite (1-4)
+	_assign_random_pawn_sprite()
+
 func _initialize_behavior_lists() -> void:
 	"""Set up behavior lists with state instances"""
-	
+
 	missionBehaviorList.append(MissionCompleteState.new(self))  # Fallback
 
 	# Travel behaviors (checked when traveling or idle)
 	travelBehaviorList.append(TravelState.new(self))
 	travelBehaviorList.append(IdleState.new(self))
+
+func _assign_random_pawn_sprite() -> void:
+	"""Randomly assign one of the 4 pawn sprites on initialization"""
+	var pawn_sprites: Array[String] = [
+		"res://assets/PAWNS/pawn1.png",
+		"res://assets/PAWNS/pawn2.png",
+		"res://assets/PAWNS/pawn3.png",
+		"res://assets/PAWNS/pawn4.png"
+	]
+
+	# Randomly select one of the 4 pawn sprites
+	var random_index = randi_range(0, 3)
+	var selected_sprite_path = pawn_sprites[random_index]
+
+	# Load and assign the texture
+	var sprite_node = get_node_or_null("Sprite2D") as Sprite2D
+	if sprite_node != null:
+		sprite_node.texture = load(selected_sprite_path)
+		DebugUtils.dprint(str(character_type) + " " + str(id) + " assigned sprite: pawn" + str(random_index + 1))
 
 # ============================================================
 #  Main Process Loop
@@ -127,6 +149,11 @@ func set_mission_target(chunk: Vector2i) -> void:
 		DebugUtils.dprint(str(character_type) + " " + str(id) + " cannot accept mission - not idle at base")
 		return
 
+	# Block new missions if already completed one (needs manual reset)
+	if mission_complete:
+		DebugUtils.dprint(str(character_type) + " " + str(id) + " cannot accept mission - already completed a mission")
+		return
+
 	# Set mission target
 	target_chunk = chunk
 	mission_complete = false
@@ -141,6 +168,50 @@ func set_selected(selected: bool) -> void:
 	var indicator = get_node_or_null("SelectionIndicator")
 	if indicator != null:
 		indicator.visible = selected
+
+# ============================================================
+#  UI Integration - Getters
+# ============================================================
+
+func get_sprite() -> Sprite2D:
+	"""Get character sprite node for UI"""
+	return get_node_or_null("Sprite2D") as Sprite2D
+
+func get_id() -> int:
+	"""Get character ID"""
+	return id
+
+func get_type() -> String:
+	"""Get character type"""
+	return character_type
+
+func get_team() -> int:
+	"""Get character team"""
+	return team
+
+func get_mission_complete() -> bool:
+	"""Get mission completion status"""
+	return mission_complete
+
+func get_current_chunk() -> Vector2i:
+	"""Get current chunk position"""
+	return current_chunk
+
+func get_target_chunk() -> Vector2i:
+	"""Get target chunk position"""
+	return target_chunk
+
+func get_base_chunk() -> Vector2i:
+	"""Get base chunk position"""
+	return base_chunk
+
+func enable_mission_acceptance() -> void:
+	"""Enable character to accept new missions (resets mission_complete flag)"""
+	mission_complete = false
+
+func is_idle_at_base() -> bool:
+	"""Check if character is idle at their base"""
+	return current_chunk == base_chunk and target_chunk == Vector2i(-1, -1) and mission_complete
 
 # ============================================================
 #  Behavior/State Logic
@@ -269,7 +340,8 @@ func _path_to_tile(destination: Vector2i) -> void:
 	if ground_layer == null:
 		return
 
-	path = Pathfinder.find_path(current_tile, destination, ground_layer, character_layer)
+	# Pass team to pathfinder so it avoids friendly characters
+	path = Pathfinder.find_path(current_tile, destination, ground_layer, character_layer, team)
 	path_index = 0
 	is_traveling = path.size() > 0
 	move_timer = 0.0
@@ -288,6 +360,16 @@ func _update_movement(delta: float) -> void:
 
 	if move_timer >= 1.0:
 		move_timer -= 1.0
+
+		# Check if next tile is blocked by a friendly character
+		var next_tile = path[path_index]
+		if _is_tile_blocked_by_friendly(next_tile):
+			# Recalculate path to avoid the blocking character
+			var destination = path[path.size() - 1]  # Final destination
+			_path_to_tile(destination)
+			# Reset timer to give new path a moment
+			move_timer = 0.5
+			return
 
 		# Move to next tile
 		current_tile = path[path_index]
@@ -367,6 +449,18 @@ func _is_tile_walkable(tile: Vector2i) -> bool:
 		return false
 
 	return ground_layer.get_cell_source_id(tile) != -1
+
+func _is_tile_blocked_by_friendly(tile: Vector2i) -> bool:
+	"""Check if tile is currently blocked by a friendly character"""
+	if character_layer == null:
+		return false
+
+	var chars_at_tile = character_layer.get_characters_at_tile(tile)
+	for char in chars_at_tile:
+		if char != null and char != self and char.get_team() == team:
+			return true
+
+	return false
 
 # ============================================================
 #  Combat
